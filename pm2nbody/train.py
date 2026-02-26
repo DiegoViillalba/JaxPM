@@ -7,10 +7,11 @@ import yaml
 from functools import partial
 import jax.numpy as jnp
 from jaxpm.nn import CNN, NeuralSplineFourierFilter
-from jaxpm.nn_utils import ReduceLROnPlateau
+# from jaxpm.nn_utils import ReduceLROnPlateau
 import sys
 from absl import flags
-from ml_collections import config_flags
+
+##### deleted confg dependance
 
 import jax
 import optax
@@ -25,7 +26,7 @@ import pickle
 
 import numpy as np
 import matplotlib.pyplot as plt
-
+import scienceplots
 plt.style.use(["science", "vibrant"])
 from jaxpm.painting import compensate_cic
 from jaxpm.utils import power_spectrum, cross_correlation_coefficients
@@ -36,6 +37,131 @@ from loss import (
     get_position_loss,
     get_mse_pos,
 )
+
+################Patch to not use config file
+from dataclasses import dataclass
+from typing import Any, Dict
+import copy
+
+class AttrDict(dict):
+    """dict con acceso por atributos + to_dict() recursivo."""
+    def __getattr__(self, k):
+        try:
+            v = self[k]
+        except KeyError as e:
+            raise AttributeError(k) from e
+        return v
+
+    def __setattr__(self, k, v):
+        self[k] = v
+
+    def to_dict(self):
+        def conv(x):
+            if isinstance(x, AttrDict):
+                return {k: conv(v) for k, v in x.items()}
+            if isinstance(x, dict):
+                return {k: conv(v) for k, v in x.items()}
+            return x
+        return conv(self)
+
+def to_attrdict(d: Dict[str, Any]) -> AttrDict:
+    out = AttrDict()
+    for k, v in d.items():
+        if isinstance(v, dict):
+            out[k] = to_attrdict(v)
+        else:
+            out[k] = v
+    return out
+
+def deep_update(base: dict, upd: dict) -> dict:
+    """Merge recursivo: upd sobreescribe base."""
+    for k, v in upd.items():
+        if isinstance(v, dict) and isinstance(base.get(k), dict):
+            deep_update(base[k], v)
+        else:
+            base[k] = v
+    return base
+
+def default_config() -> AttrDict:
+    # Defaults razonables (ajusta a tu caso)
+    cfg = {
+        "data": {
+            "mesh_lr": 64,
+            "mesh_hr": 128,
+            "n_train_sims": 1,
+            "n_val_sims": 1,
+            "snapshots": None,     # o lista [0,5,10]
+            "box_size": 256.0,
+            "n_snapshots": 10,
+            "n_particles": 64,
+        },
+        "correction_model": {
+            "type": "cnn",  # "cnn" | "kcorr" | "cnn+kcorr" | "cnn_force"
+            "channels_hidden_dim": 16,
+            "n_convolutions": 3,
+            "n_fully_connected": 2,
+            "input_dim": 1,  # o 2 si usas [phi, delta]
+            "kernel_size": 3,
+            "pad_periodic": True,
+            "embed_globals": False,
+            "n_globals_embedding": 1,
+            "globals_embedding_dim": 64,
+            "global_conditioning": "add",
+            "use_attention_interpolation": False,
+            "add_particle_velocities": True,
+            # para kcorr:
+            "n_knots": 16,
+            "latent_size": 64,
+        },
+        "training": {
+            "seed": 0,
+            "n_steps": 10,
+            "batch_size": 1,
+            "patience": 20,
+            "checkpoint_every": 5,
+            "sample_snapshots": True,
+
+            # loss
+            "loss": "mse_positions",
+            "weight_snapshots": True,
+            "lambda_pos": 1.0,
+            "lambda_velocity": 1.0,
+            "lambda_density": 0.0,
+            "lambda_pk": 0.0,
+            "lambda_cross_corr": 0.0,
+            "log_pos": False,
+            "fractional_mse": False,
+
+            # optimizer + schedule (IMPORTANTE: tu build_schedule espera training.schedule.*)
+            "weight_decay": 1e-4,
+            "schedule": {
+                "type": "cosine",
+                "initial_lr": 0.0,
+                "peak_value": 3e-4,
+                "warmup_steps": 500,
+                "n_steps": 20_000,
+                # plateau (si algún día lo revives):
+                "factor": 0.5,
+                "patience": 5,
+                "min_lr": 1e-6,
+            },
+        },
+        "wandb": {
+            "project": "pm2nbody",
+        },
+    }
+    return to_attrdict(cfg)
+
+def load_config_yaml(path: str) -> AttrDict:
+    cfg = default_config().to_dict()
+    with open(path, "r") as f:
+        user_cfg = yaml.safe_load(f) or {}
+    cfg = deep_update(cfg, user_cfg)
+    return to_attrdict(cfg)
+
+
+flags.DEFINE_string("config", "", "Path a un YAML de configuración (opcional).")
+#########################
 
 # try velocity loss with pbcs (check range first)
 # velocity validation? check field level emulator too
@@ -48,7 +174,7 @@ from loss import (
 # 6) Add velocity loss, degeneracy with periodic boundaries?
 # 7) Add flag for time diffusion embedding
 
-config.update("jax_enable_x64", True)
+config.update("jax_enable_x64", False)
 
 
 def build_loss_fn(
@@ -113,7 +239,7 @@ def build_loss_fn(
             lambda_pk=training_config.lambda_pk,
             lambda_cross_corr=training_config.lambda_cross_corr,
             log_pos=training_config.log_pos,
-            fractional_mse = training_config.fractional_mse,
+            fractional_mse=training_config.fractional_mse,
         )
 
         def loss_fn(
@@ -134,7 +260,9 @@ def build_loss_fn(
     return loss_fn
 
 
-def build_network(config,):
+def build_network(
+    config,
+):
     def CNNCorr(
         x,
         positions,
@@ -217,18 +345,14 @@ def initialize_network(
             scale_init,
         )
         params["cnn"] = neural_net["cnn"].init(
-            rng,
-            grid_input_init,
-            pos_init,
-            scale_init,
-            None
+            rng, grid_input_init, pos_init, scale_init, None
         )
     return params
 
 
 def build_dataloader(
     config,
-    data_dir=Path(f"/n/holystore01/LABS/itc_lab/Users/ccuestalazaro/pm2nbody/data/"),
+    data_dir=Path(f"/home/jvazquez/diego_villalba/florpi/JaxPM/data/"),
 ):
     omega_c = 0.25
     sigma8 = 0.8
@@ -275,7 +399,7 @@ def build_schedule(config):
             factor=config.factor,
             patience=config.patience,
             min_lr=config.min_lr,
-        )  
+        )
 
 
 def build_optimizer(
@@ -312,7 +436,13 @@ def print_initial_lr_loss(
             )
         )
         val_vel_loss.append(
-            jnp.mean((val_batch["lr"].velocities * val_batch['lr'].mesh - val_batch["hr"].velocities * val_batch['lr'].mesh) ** 2)
+            jnp.mean(
+                (
+                    val_batch["lr"].velocities * val_batch["lr"].mesh
+                    - val_batch["hr"].velocities * val_batch["lr"].mesh
+                )
+                ** 2
+            )
         )
         val_pot_loss.append(
             jnp.mean((val_batch["lr"].potential - val_batch["hr"].potential) ** 2)
@@ -332,7 +462,13 @@ def checkpoint(run_dir, loss, params, prefix, step=None):
         pickle.dump(state_dict, f)
 
 
-def plot_eval(val_pos_pm, val_data, max_idx=None, box_size=256.0, fig_label='val',):
+def plot_eval(
+    val_pos_pm,
+    val_data,
+    max_idx=None,
+    box_size=256.0,
+    fig_label="val",
+):
     if max_idx is None:
         max_idx = -1
     mesh_plot = val_data["hr"].mesh
@@ -422,23 +558,30 @@ def train_step(
     early_stop,
     max_idx,
 ):
-    def train_loss_fn(
-        params,
-    ):
-        batch = next(train_data.iterator)
-        batch = train_data.move_to_device(batch, device=jax.devices()[0])
-        return loss_fn(
-            params=params,
-            dataset=batch,
-            scale_factors=scale_factors,
-            max_idx=max_idx,
-        )[0]
+    # def train_loss_fn(
+    #     params,
+    # ):
+    #     batch = next(train_data.iterator)
+    #     batch = train_data.move_to_device(batch, device=jax.devices()[0])
+    #     return loss_fn(
+    #         params=params,
+    #         dataset=batch,
+    #         scale_factors=scale_factors,
+    #         max_idx=max_idx,
+    #     )[0]
 
-    train_loss, grads = jax.value_and_grad(
-        train_loss_fn,
-    )(
-        params,
-    )
+    # train_loss, grads = jax.value_and_grad(
+    #     train_loss_fn,
+    # )(
+    #     params,
+    # )
+    batch = next(train_data.iterator)
+    batch = train_data.move_to_device(batch, device=jax.devices()[0])
+
+    def train_loss_fn(params, batch, scale_factors, max_idx):
+        return loss_fn(params=params, dataset=batch, scale_factors=scale_factors, max_idx=max_idx)[0]
+
+    train_loss, grads = jax.value_and_grad(train_loss_fn)(params, batch, scale_factors, max_idx)
     updates, opt_state = optimizer.update(grads, opt_state, params)
 
     params = optax.apply_updates(params, updates)
@@ -448,7 +591,7 @@ def train_step(
             "Loss": train_loss,
         }
     )
-    if step % config.training.batch_size == 0:
+    if step % (10 * config.training.batch_size) == 0:
         val_loss = 0.0
         for val_batch in val_data:
             val_batch = val_data.move_to_device(val_batch, device=jax.devices()[0])
@@ -466,10 +609,12 @@ def train_step(
                 val_batch,
                 max_idx=max_idx,
             )
-        has_improved, early_stop = early_stop.update(val_loss)
+        # has_improved, early_stop = early_stop.update(val_loss)
+        has_improved = early_stop.update(val_loss)
         if has_improved:
             best_params = params
-        schedule.step(val_loss)
+        if hasattr(schedule, "step"):
+            schedule.step(val_loss)
         learning_rate = opt_state.inner_opt_state[1].hyperparams["learning_rate"]
         wandb.log(
             {
@@ -482,7 +627,8 @@ def train_step(
 
         pbar.set_postfix(val_loss=val_loss)
 
-        should_stop, early_stop = early_stop.update(val_loss)
+        # should_stop, early_stop = early_stop.update(val_loss)
+        should_stop = early_stop.update(val_loss)
     else:
         should_stop = False
     return train_loss, params, best_params, opt_state, early_stop, should_stop
@@ -490,10 +636,12 @@ def train_step(
 
 def train(
     config=None,
-    data_dir=Path(f"/n/holystore01/LABS/itc_lab/Users/ccuestalazaro/pm2nbody/data/"),
-    output_dir=Path("/n/holystore01/LABS/itc_lab/Users/ccuestalazaro/pm2nbody/models/"),
+    data_dir=Path(f"/home/jvazquez/diego_villalba/florpi/JaxPM/data/"),
+    output_dir=Path("/home/jvazquez/diego_villalba/florpi/JaxPM/models/"),
 ):
-    neural_net = build_network(config.correction_model,)
+    neural_net = build_network(
+        config.correction_model,
+    )
     cosmology, scale_factors, train_data, val_data, test_data = build_dataloader(
         config.data,
         data_dir=data_dir,
@@ -587,16 +735,21 @@ def train(
         scale_factors,
         max_idx=None,
     )
-    print(f'Test loss = {test_loss:.5f}')
-    plot_eval(test_pos_pm, test_batch, max_idx=None, fig_label='test')
+    print(f"Test loss = {test_loss:.5f}")
+    plot_eval(test_pos_pm, test_batch, max_idx=None, fig_label="test")
     return best_loss
 
 
 if __name__ == "__main__":
     FLAGS = flags.FLAGS
-    config_flags.DEFINE_config_file("config", "config.py", "Training configuration")
     FLAGS(sys.argv)
+
+    if FLAGS.config:
+        config = load_config_yaml(FLAGS.config)
+    else:
+        config = default_config()
+
     print("Running configuration")
-    print(FLAGS.config)
-    config = FLAGS.config
+    print(config.to_dict())
+
     best_loss = train(config)

@@ -150,19 +150,19 @@ def get_position_loss(
             apply_log=log_pos,
             fractional=fractional_mse,
         )
-        if lambda_velocity is not None:
+        if lambda_velocity not in (None, 0.0):
             sim_mse += lambda_velocity * jnp.mean(
                 jnp.sum((vel_pm - vel_hr) ** 2, axis=-1)
             )
-        if lambda_density is not None:
+        if lambda_density not in (None, 0.0):
             sim_mse += lambda_density * get_density_loss(
                 pos_pm, pos_hr, n_mesh_lr=n_mesh, n_mesh_hr=2 * n_mesh
             )
-        if lambda_cross_corr is not None:
+        if lambda_cross_corr not in (None, 0.0):
             sim_mse += lambda_cross_corr * get_cross_corr_loss(
                 pos_pm, pos_hr, n_mesh_lr=n_mesh, n_mesh_hr=2 * n_mesh
             )
-        if lambda_pk is not None:
+        if lambda_pk not in (None, 0.0):
             sim_mse += lambda_pk * get_pk_loss(
                 pos_pm, pos_hr, n_mesh_lr=n_mesh, n_mesh_hr=2 * n_mesh
             )
@@ -195,11 +195,10 @@ def get_pk_loss(pos_pm, pos_hr, n_mesh_lr, n_mesh_hr, box_size=256.0):
             kmin=np.pi / box_size,
             dk=2 * np.pi / box_size,
         )
-        ratio.append(
-            pk_pm / pk_hr
-        )
+        ratio.append(pk_pm / pk_hr)
 
-    return jnp.mean(jnp.sum((jnp.stack(ratio)-1)**2,axis=-1))
+    return jnp.mean(jnp.sum((jnp.stack(ratio) - 1) ** 2, axis=-1))
+
 
 def get_cross_corr_loss(pos_pm, pos_hr, n_mesh_lr, n_mesh_hr, box_size=256.0):
     cross_corrs = []

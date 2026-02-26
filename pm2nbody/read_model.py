@@ -77,5 +77,5 @@ def read_model(
             "kcorr": kcorr,
         }
     else:
-        raise ValueError(f'Unknown correction model type: {config["type"]}')
+        raise ValueError(f"Unknown correction model type: {config['type']}")
     return neural_net, params

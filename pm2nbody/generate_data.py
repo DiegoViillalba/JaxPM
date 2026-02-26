@@ -14,13 +14,13 @@ from jax import config
 config.update("jax_enable_x64", True)
 
 
-def get_linear_field(mesh_shape, box_size, omega_c, sigma8, seed=0):
-    k = jnp.logspace(-4, 1, 128)
-    pk = jc.power.linear_matter_power(jc.Planck15(Omega_c=omega_c, sigma8=sigma8), k)
-    pk_fn = lambda x: jc.scipy.interpolate.interp(x.reshape([-1]), k, pk).reshape(
-        x.shape
-    )
-    return linear_field(mesh_shape, box_size, pk_fn, seed=jax.random.PRNGKey(seed))
+# def get_linear_field(mesh_shape, box_size, omega_c, sigma8, seed=0):
+#     k = jnp.logspace(-4, 1, 128)
+#     pk = jc.power.linear_matter_power(jc.Planck15(Omega_c=omega_c, sigma8=sigma8), k)
+#     pk_fn = lambda x: jc.scipy.interpolate.interp(x.reshape([-1]), k, pk).reshape(
+#         x.shape
+#     )
+#     return linear_field(mesh_shape, box_size, pk_fn, seed=jax.random.PRNGKey(seed))
 
 
 def downsample_field(
@@ -32,6 +32,33 @@ def downsample_field(
     result = scipy.ndimage.convolve(field, filter_weights, mode="mirror")
     result = result[::downsampling_factor, ::downsampling_factor, ::downsampling_factor]
     return result
+
+
+def get_linear_field(mesh_shape, box_size, omega_c, sigma8, seed=0):
+    # tabulación de P(k)
+    k = jnp.logspace(-4, 1, 128)
+    pk = jc.power.linear_matter_power(jc.Planck15(Omega_c=omega_c, sigma8=sigma8), k)
+
+    def pk_fn(x):
+        # x: array (kmesh) con shape 3D
+        xflat = x.reshape(-1)
+
+        # índices de interpolación lineal
+        idx = jnp.searchsorted(k, xflat)
+        idx = jnp.clip(idx, 1, k.size - 1)
+
+        k0 = k[idx - 1]
+        k1 = k[idx]
+        p0 = pk[idx - 1]
+        p1 = pk[idx]
+
+        t = (xflat - k0) / (k1 - k0 + 1e-12)
+        out = p0 + t * (p1 - p0)
+        return out.reshape(x.shape)
+
+    # Si sigues viendo OOM, fuerza esta línea a CPU:
+    # with jax.default_device(jax.devices("cpu")[0]):
+    return linear_field(mesh_shape, box_size, pk_fn, seed=jax.random.PRNGKey(seed))
 
 
 def arange_particles_in_mesh(
@@ -109,12 +136,12 @@ def run_simulation(
 
 
 if __name__ == "__main__":
-    out_dir = Path("/n/holystore01/LABS/itc_lab/Users/ccuestalazaro/pm2nbody/data/")
-    mesh_lr = 32  # 128
-    mesh_hr = 64  # 256 #128
+    out_dir = Path("/home/jvazquez/diego_villalba/florpi/JaxPM/data")
+    mesh_lr = 64  # 128
+    mesh_hr = 128  # 256 #128
     n_particles_sqrt_3 = mesh_lr
     n_particles = n_particles_sqrt_3**3  # mesh_hr**3
-    n_snapshots = 25
+    n_snapshots = 10
     snapshots = jnp.linspace(0.1, 1.0, n_snapshots)
     L = 256.0
     out_dir /= (
@@ -127,7 +154,7 @@ if __name__ == "__main__":
     omega_c = 0.25
     sigma8 = 0.8
     ics_seed = 0
-    n_sims = 1000
+    n_sims = 3
     for n in range(n_sims):
         # Generate density field ICs
         print("*" * 10)

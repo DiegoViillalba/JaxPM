@@ -72,7 +72,7 @@ def get_cnn_force(kvec, delta_k, positions, velocities, delta, model, params,a, 
 
 def pm_forces(
     positions,
-    velocities,
+    velocities=None,
     mesh_shape=None,
     delta=None,
     r_split=0,
@@ -84,6 +84,9 @@ def pm_forces(
     """
     Computes gravitational forces on particles using a PM scheme
     """
+    if velocities is None:
+        velocities = jnp.zeros_like(positions)
+    
     if mesh_shape is None:
         mesh_shape = delta.shape
     if delta is None:
