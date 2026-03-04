@@ -140,6 +140,79 @@ def get_potential_loss(neural_net, cosmology, correction_type):
 
     return loss_fn
 
+# def get_position_loss(
+#     neural_net,
+#     cosmology,
+#     n_mesh: int,
+#     lambda_pos=1.0,
+#     lambda_velocity=None,
+#     lambda_density=None,
+#     lambda_cross_corr=None,
+#     lambda_pk=None,
+#     correction_type=None,
+#     weight_snapshots=False,
+#     log_pos=False,
+#     fractional_mse=False,
+# ):
+#     logger.info("JIT compiling position loss function.")
+#     @jax.jit
+#     def loss_fn(
+#         params,
+#         pos_lr,
+#         vel_lr,
+#         pos_hr,
+#         vel_hr,
+#         scale_factors,
+#     ):
+#         pos_pm, vel_pm = odeint(
+#             make_ode_fn(
+#                 mesh_shape=(n_mesh, n_mesh, n_mesh),
+#                 add_correction=correction_type,
+#                 model=neural_net,
+#             ),
+#             [pos_lr[0], vel_lr[0]],
+#             scale_factors,
+#             cosmology,
+#             params,
+#             rtol=1e-5,
+#             atol=1e-5,
+#         )
+#         pos_pm %= n_mesh
+#         pos_hr %= n_mesh
+#         if weight_snapshots:
+#             snapshot_weights = (1.0 / scale_factors**1.7)[:, None]
+#         else:
+#             snapshot_weights = None
+#         sim_mse = lambda_pos * get_mse_pos(
+#             x=pos_pm,
+#             y=pos_hr,
+#             x_lr=pos_lr,
+#             box_size=n_mesh,
+#             snapshot_weights=snapshot_weights,
+#             apply_log=log_pos,
+#             fractional=fractional_mse,
+#         )
+#         if lambda_velocity not in (None, 0.0):
+#             sim_mse += lambda_velocity * jnp.mean(
+#                 jnp.sum((vel_pm - vel_hr) ** 2, axis=-1)
+#             )
+#         if lambda_density not in (None, 0.0):
+#             sim_mse += lambda_density * get_density_loss(
+#                 pos_pm, pos_hr, n_mesh_lr=n_mesh, n_mesh_hr=2 * n_mesh
+#             )
+#         if lambda_cross_corr not in (None, 0.0):
+#             sim_mse += lambda_cross_corr * get_cross_corr_loss(
+#                 pos_pm, pos_hr, n_mesh_lr=n_mesh, n_mesh_hr=2 * n_mesh
+#             )
+#         if lambda_pk not in (None, 0.0):
+#             sim_mse += lambda_pk * get_pk_loss(
+#                 pos_pm, pos_hr, n_mesh_lr=n_mesh, n_mesh_hr=2 * n_mesh
+#             )
+
+#         return sim_mse, pos_pm
+
+#     return loss_fn
+
 def get_position_loss(
     neural_net,
     cosmology,
@@ -154,48 +227,63 @@ def get_position_loss(
     log_pos=False,
     fractional_mse=False,
 ):
-    logger.info("JIT compiling position loss function.")
+    """
+    Convention:
+      - pos_lr, vel_lr, pos_hr, vel_hr are in MESH UNITS: [0, n_mesh)
+      - Dynamics runs in MESH UNITS (no scaling needed)
+      - Loss uses periodic minimal-image distance in mesh units
+      - (Optionally normalize by n_mesh^2 to keep loss scale resolution-invariant)
+    """
+    logger.info("JIT compiling position loss function (mesh-units + periodic minimal-image).")
+
+    n = jnp.asarray(n_mesh, dtype=jnp.float32)
+
     @jax.jit
-    def loss_fn(
-        params,
-        pos_lr,
-        vel_lr,
-        pos_hr,
-        vel_hr,
-        scale_factors,
-    ):
+    def loss_fn(params, pos_lr, vel_lr, pos_hr, vel_hr, scale_factors):
         pos_pm, vel_pm = odeint(
             make_ode_fn(
                 mesh_shape=(n_mesh, n_mesh, n_mesh),
                 add_correction=correction_type,
                 model=neural_net,
             ),
-            [pos_lr[0], vel_lr[0]],
+            [pos_lr[0], vel_lr[0]],   # already mesh units
             scale_factors,
             cosmology,
             params,
             rtol=1e-5,
             atol=1e-5,
         )
-        pos_pm %= n_mesh
-        pos_hr %= n_mesh
+
+        # Wrap both to [0,n)
+        pos_pm = jnp.mod(pos_pm, n)
+        pos_hr = jnp.mod(pos_hr, n)
+
+        # periodic minimal-image distance in mesh units
+        d = pos_pm - pos_hr
+        d = d - n * jnp.round(d / n)    # map to [-n/2, n/2)
+
         if weight_snapshots:
-            snapshot_weights = (1.0 / scale_factors**1.7)[:, None]
+            w = (1.0 / scale_factors**1.7)[:, None]  # (T,1)
         else:
-            snapshot_weights = None
-        sim_mse = lambda_pos * get_mse_pos(
-            x=pos_pm,
-            y=pos_hr,
-            x_lr=pos_lr,
-            box_size=n_mesh,
-            snapshot_weights=snapshot_weights,
-            apply_log=log_pos,
-            fractional=fractional_mse,
-        )
+            w = None
+
+        per_particle = jnp.sum(d * d, axis=-1)  # (T, Np)
+        if w is not None:
+            per_particle = per_particle * w
+
+        pos_mse = jnp.mean(per_particle)
+
+        # Normalize by n^2 if you want scale-invariant loss across meshes
+        pos_mse = pos_mse / (n * n)
+
+        sim_mse = lambda_pos * pos_mse
+
         if lambda_velocity not in (None, 0.0):
-            sim_mse += lambda_velocity * jnp.mean(
-                jnp.sum((vel_pm - vel_hr) ** 2, axis=-1)
-            )
+            dv = vel_pm - vel_hr
+            vel_mse = jnp.mean(jnp.sum(dv * dv, axis=-1))
+            vel_mse = vel_mse / (n * n)   # same normalization if vel shares units
+            sim_mse += lambda_velocity * vel_mse
+
         if lambda_density not in (None, 0.0):
             sim_mse += lambda_density * get_density_loss(
                 pos_pm, pos_hr, n_mesh_lr=n_mesh, n_mesh_hr=2 * n_mesh
@@ -212,7 +300,6 @@ def get_position_loss(
         return sim_mse, pos_pm
 
     return loss_fn
-
 
 def get_pk_loss(pos_pm, pos_hr, n_mesh_lr, n_mesh_hr, box_size=256.0):
     ratio = []

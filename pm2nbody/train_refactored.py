@@ -1,4 +1,5 @@
 import os
+
 os.environ["TF_GPU_ALLOCATOR"] = "cuda_malloc_async"
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 # opcional: limita el pool inicial para evitar acaparar
@@ -114,16 +115,16 @@ def default_config() -> AttrDict:
         "data": {
             "mesh_lr": 128,
             "mesh_hr": 256,
-            "n_train_sims": 10,
+            "n_train_sims": 1,
             "n_val_sims": 1,
-            "n_test_sims": 1,
+            "n_test_sims": 0,
             "snapshots": None,
             "box_size": 256.0,
             "n_snapshots": 50,
             "n_particles": 128,
         },
         "correction_model": {
-            "type": "cnn",
+            "type": "kcorr",  # Oprtions aviable kcorr,cnn
             "channels_hidden_dim": 16,
             "n_convolutions": 3,
             "n_fully_connected": 2,
@@ -145,8 +146,8 @@ def default_config() -> AttrDict:
             "batch_size": 1,
             "patience": 20,
             "checkpoint_every": 5,
-            "sample_snapshots": False, #Caused JIT compilation issues, so set to False for now
-            "loss": "mse_potential", #options: mse_frozen_potential, mse_potential, mse_positions
+            "sample_snapshots": False,  # Caused JIT compilation issues, so set to False for now
+            "loss": "mse_positions",  # options: mse_frozen_potential, mse_potential, mse_positions
             "weight_snapshots": True,
             "lambda_pos": 1.0,
             "lambda_velocity": 1.0,
@@ -156,7 +157,7 @@ def default_config() -> AttrDict:
             "log_pos": False,
             "fractional_mse": False,
             "weight_decay": 1e-4,
-            "max_idx":49,
+            "max_idx": 49,
             "schedule": {
                 "type": "cosine",
                 "initial_lr": 0.0,
@@ -192,7 +193,8 @@ flags.DEFINE_string("config", "", "Path to a YAML configuration file (optional).
 
 
 def build_network(config):
-    logger.info(f"Building correction model of type: {config.type}")    
+    logger.info(f"Building correction model of type: {config.type}")
+
     def CNNCorr(x, positions, scale_factors, velocities):
         # logger.info("Initializing CNN correction model with config:")
         # logger.info(f"  channels_hidden_dim: {config.channels_hidden_dim}")
@@ -256,7 +258,9 @@ def build_network(config):
 def initialize_network(
     data_sample, neural_net, seed: int = 42, model_type: str = "cnn"
 ):
-    logger.info(f"Initializing network parameters with seed {seed} for model type {model_type}")
+    logger.info(
+        f"Initializing network parameters with seed {seed} for model type {model_type}"
+    )
     rng = jax.random.PRNGKey(seed)
     # grid_input_init = data_sample["lr"].grid[0]
     grid_full = data_sample["lr"].get_grid()
@@ -264,7 +268,6 @@ def initialize_network(
     pos_init = data_sample["lr"].positions[0]
     vel_init = data_sample["lr"].velocities[0]
     scale_init = jnp.array(1.0)
-
 
     if model_type == "kcorr":
         logger.info("Initializing only the Kernel correction model parameters.")
@@ -283,13 +286,11 @@ def initialize_network(
 
 
 def build_loss_fn(
-    training_config, 
-    neural_net, 
-    cosmology, 
-    correction_type, 
-    mesh_lr: int
+    training_config, neural_net, cosmology, correction_type, mesh_lr: int
 ):
-    logger.info(f"Building loss function for training with loss type: {training_config.loss}")
+    logger.info(
+        f"Building loss function for training with loss type: {training_config.loss}"
+    )
     logger.info(f"Correction model type for loss function: {correction_type}")
 
     MAX_IDX = int(training_config.max_idx)
@@ -308,12 +309,12 @@ def build_loss_fn(
                 dataset["hr"].potential,
                 scale_factors,
             )
-            
+
             # 2. Create a boolean mask for valid indices
             # max_idx determines how many snapshots to include
             T = loss_array.shape[0]
             mask = jnp.arange(T) <= max_idx
-            
+
             # 3. Apply mask and compute mean only over valid snapshots
             masked_loss = jnp.sum(loss_array * mask)
             return masked_loss / jnp.clip(jnp.sum(mask), a_min=1.0)
@@ -329,16 +330,16 @@ def build_loss_fn(
         def loss_fn(params, dataset, scale_factors):
             # Change .positions to ["positions"]
             T = min(scale_factors.shape[0], dataset["lr"].positions.shape[0])
-            
+
             # (Assuming you removed max_idx as discussed, we use T directly or a static MAX_IDX mask)
-            t = T 
+            t = T
 
             return single_loss_fn(
                 params,
                 dataset["lr"].grid[:t],
                 dataset["lr"].positions[:t] * dataset["lr"].mesh,
                 dataset["lr"].velocities[:t] * dataset["lr"].mesh,
-                dataset["hr"].potential[:t],   # <- target potencial HR
+                dataset["hr"].potential[:t],  # <- target potencial HR
                 scale_factors[:t],
             )
 
@@ -358,15 +359,33 @@ def build_loss_fn(
             log_pos=training_config.log_pos,
             fractional_mse=training_config.fractional_mse,
         )
-        def loss_fn(params, dataset, scale_factors, max_idx):
+
+        def loss_fn(params, dataset, scale_factors):
+            T = min(
+                scale_factors.shape[0],
+                dataset["lr"].positions.shape[0],
+                dataset["hr"].positions.shape[0],
+            )
+            # m = jnp.asarray(mesh_lr, dtype=dataset["lr"].positions.dtype)
+
             return single_loss_fn(
                 params,
-                dataset["lr"].positions[:max_idx] * dataset["lr"].mesh,
-                dataset["lr"].velocities[:max_idx] * dataset["lr"].mesh,
-                dataset["hr"].positions[:max_idx] * dataset["lr"].mesh,
-                dataset["hr"].velocities[:max_idx] * dataset["lr"].mesh,
-                scale_factors[:max_idx],
+                dataset["lr"].positions[:T] ,
+                dataset["lr"].velocities[:T] ,
+                dataset["hr"].positions[:T] ,
+                dataset["hr"].velocities[:T],
+                scale_factors[:T],
             )
+
+        # def loss_fn(params, dataset, scale_factors, max_idx):
+        #     return single_loss_fn(
+        #         params,
+        #         dataset["lr"].positions[:max_idx] * dataset["lr"].mesh,
+        #         dataset["lr"].velocities[:max_idx] * dataset["lr"].mesh,
+        #         dataset["hr"].positions[:max_idx] * dataset["lr"].mesh,
+        #         dataset["hr"].velocities[:max_idx] * dataset["lr"].mesh,
+        #         scale_factors[:max_idx],
+        #     )
     else:
         raise ValueError(f"Unknown loss type: {training_config.loss}")
 
@@ -404,7 +423,9 @@ def build_dataloader(config, data_dir=DEFAULT_DATA_DIR):
         snapshots=snapshots,
         box_size=config.box_size,
     )
-    logger.info(f"Datasets Created: Train ({len(train_data)}), Val ({len(val_data)}), Test ({len(test_data)})")
+    logger.info(
+        f"Datasets Created: Train ({len(train_data)}), Val ({len(val_data)}), Test ({len(test_data)})"
+    )
     logger.info(f"Dataset device: {train_data[0]['lr'].density_grid.device}")
     return cosmology, scale_factors, train_data, val_data, test_data
 
@@ -457,75 +478,92 @@ def checkpoint(run_dir, loss, params, prefix, step=None):
 def print_initial_lr_loss(val_data):
     logger.info("Calculating initial loss on validation set with untrained model...")
     val_pos_loss, val_vel_loss, val_pot_loss = [], [], []
+
     for val_batch in val_data:
-        lr_pos_scaled = val_batch["lr"].positions * val_batch["lr"].mesh
-        hr_pos_scaled = val_batch["hr"].positions * val_batch["lr"].mesh
+        # Convention: positions/velocities are in BOX UNITS [0,1)
+        lr_pos = jnp.mod(val_batch["lr"].positions, 1.0)
+        hr_pos = jnp.mod(val_batch["hr"].positions, 1.0)
 
-        val_pos_loss.append(
-            get_mse_pos(
-                hr_pos_scaled,
-                lr_pos_scaled,
-                x_lr=lr_pos_scaled,
-                box_size=val_batch["lr"].mesh,
-            )
-        )
+        # Periodic minimal-image distance
+        d = lr_pos - hr_pos
+        d = d - jnp.round(d)  # [-0.5, 0.5)
+        pos_mse = jnp.mean(jnp.sum(d * d, axis=-1))
+        val_pos_loss.append(pos_mse)
 
-        vel_diff = (
-            val_batch["lr"].velocities - val_batch["hr"].velocities
-        ) * val_batch["lr"].mesh
-        val_vel_loss.append(jnp.mean(vel_diff**2))
+        lr_vel = val_batch["lr"].velocities
+        hr_vel = val_batch["hr"].velocities
+        dv = lr_vel - hr_vel
+        vel_mse = jnp.mean(jnp.sum(dv * dv, axis=-1))
+        val_vel_loss.append(vel_mse)
 
         pot_diff = val_batch["lr"].potential - val_batch["hr"].potential
-        val_pot_loss.append(jnp.mean(pot_diff**2))
+        val_pot_loss.append(jnp.mean(pot_diff * pot_diff))
 
-    logger.info(f"Positions MSE  = {sum(val_pos_loss) / len(val_pos_loss):.5f}")
-    logger.info(f"Velocities MSE = {sum(val_vel_loss) / len(val_vel_loss):.5f}")
-    logger.info(f"Potential MSE  = {sum(val_pot_loss) / len(val_pot_loss):.5f}")
+    logger.info(f"Positions MSE  = {float(sum(val_pos_loss) / len(val_pos_loss)):.5f}")
+    logger.info(f"Velocities MSE = {float(sum(val_vel_loss) / len(val_vel_loss)):.5f}")
+    logger.info(f"Potential MSE  = {float(sum(val_pot_loss) / len(val_pot_loss)):.5f}")
 
 
 def plot_eval(
-    val_pos_pm, 
-    val_data, 
-    max_idx=None, 
-    box_size=256.0, 
-    fig_label="val", 
-    use_wandb=True, 
+    val_pos_pm,
+    val_data,
+    max_idx=None,
+    box_size=256.0,
+    fig_label="val",
+    use_wandb=True,
     plot_log=True,
     slab_thickness=5,
 ):
     max_idx = max_idx if max_idx is not None else -1
-    mesh_plot = val_data["hr"].mesh
+    mesh_plot = val_data["lr"].mesh  # siempre plot en la malla LR
 
-    # Calculate Deltas (Densidades)
-    delta_pm = get_delta(
-        val_pos_pm[max_idx] / val_data["lr"].mesh * mesh_plot,
-        (mesh_plot, mesh_plot, mesh_plot),
-    )
-    delta_hr = get_delta(
-        val_data["hr"].positions[max_idx] * mesh_plot, (mesh_plot, mesh_plot, mesh_plot)
-    )
-    delta_lr = get_delta(
-        val_data["lr"].positions[max_idx] * mesh_plot, (mesh_plot, mesh_plot, mesh_plot)
-    )
+    def to_mesh(pos, mesh_plot):
+        """
+        Convierte posiciones a unidades de malla [0, mesh_plot).
+        - Si ya están en mesh units (max ~ mesh_plot), NO escala.
+        - Si están en box units [0,1), escala por mesh_plot.
+        """
+        pos = np.asarray(pos)
+        mx = np.max(pos)
+        # Heurística robusta:
+        # box units: mx ~ 1
+        # mesh units: mx ~ mesh_plot
+        if mx <= 2.0:
+            return pos * mesh_plot
+        else:
+            return pos  # ya está en mesh units
 
-    # --- Plot 1: Deltas ---
-    # Proyectar sumando en el eje Z (tomando un bloque de 5 cortes de grosor)
-    proj_lr = delta_lr[:, :, :slab_thickness].sum(axis=-1)
-    proj_pm = delta_pm[:, :, :slab_thickness].sum(axis=-1)
-    proj_hr = delta_hr[:, :, :slab_thickness].sum(axis=-1)
+    # --- Convertimos a mesh units para depositar ---
+    # PM aux: normalmente ya viene en mesh units
+    pos_pm = to_mesh(val_pos_pm[max_idx], mesh_plot)
 
-    title_suffix = ""
-    
-    # Aplicar transformación logarítmica segura si se solicita
+    # HR/LR: depende de tu convención; detectamos
+    pos_hr = to_mesh(val_data["hr"].positions[max_idx], mesh_plot)
+    pos_lr = to_mesh(val_data["lr"].positions[max_idx], mesh_plot)
+
+    # Deltas
+    delta_pm = get_delta(pos_pm, (mesh_plot, mesh_plot, mesh_plot))
+    delta_hr = get_delta(pos_hr, (mesh_plot, mesh_plot, mesh_plot))
+    delta_lr = get_delta(pos_lr, (mesh_plot, mesh_plot, mesh_plot))
+
+    # Proyección (usa un slab pequeño, no toda la caja)
+    z0 = mesh_plot // 2
+    h = max(1, slab_thickness // 2)
+    sl = slice(max(z0 - h, 0), min(z0 + h, mesh_plot))
+
+    proj_lr = delta_lr[:, :, sl].sum(axis=-1)
+    proj_pm = delta_pm[:, :, sl].sum(axis=-1)
+    proj_hr = delta_hr[:, :, sl].sum(axis=-1)
+
+    # Mejor: log(1+delta) en vez de log(delta+offset)
     if plot_log:
-        # Encontramos el valor mínimo global para evitar log(0) o log(-x) si es sobredensidad
-        min_val = min(proj_lr.min(), proj_pm.min(), proj_hr.min())
-        offset = abs(min_val) + 1e-5 if min_val <= 0 else 0
-        
-        proj_lr = np.log10(proj_lr + offset)
-        proj_pm = np.log10(proj_pm + offset)
-        proj_hr = np.log10(proj_hr + offset)
+        eps = 1e-4
+        proj_lr = np.log10(np.clip(1.0 + proj_lr, eps, None))
+        proj_pm = np.log10(np.clip(1.0 + proj_pm, eps, None))
+        proj_hr = np.log10(np.clip(1.0 + proj_hr, eps, None))
         title_suffix = " (Log)"
+    else:
+        title_suffix = ""
 
     fig_delta, ax_delta = plt.subplots(ncols=3, figsize=(12, 5))
     cmap = "cividis"
@@ -545,7 +583,6 @@ def plot_eval(
 
     plt.tight_layout()
 
-    # Manejar salida de WandB vs Notebook Local
     if use_wandb:
         import wandb
         wandb.log({f"{fig_label}_delta": wandb.Image(fig_delta)})
@@ -553,7 +590,7 @@ def plot_eval(
     else:
         plt.show()
 
-    # --- Plot 2: Power Spectrum ---
+    # --- Power Spectrum ---
     def get_pk(delta):
         return power_spectrum(
             compensate_cic(delta),
@@ -567,16 +604,15 @@ def plot_eval(
     _, pk_pm = get_pk(delta_pm)
 
     fig_pk, ax_pk = plt.subplots(figsize=(8, 6))
-    ax_pk.axhline(y=0, linestyle="dashed", color="black")
+    ax_pk.axhline(y=1, linestyle="dashed", color="black")  # ratio=1 referencia
     ax_pk.semilogx(k, pk_lr / pk_hr, label="LR")
     ax_pk.semilogx(k, pk_pm / pk_hr, label="Nbodyify")
-
     ax_pk.legend()
     ax_pk.set_xlabel(r"$k$ [$h \ \mathrm{Mpc}^{-1}$]")
     ax_pk.set_ylabel(r"$P(k)/P_\mathrm{HR}(k)$")
 
-    # Manejar salida de WandB vs Notebook Local
     if use_wandb:
+        import wandb
         wandb.log({f"{fig_label}_pk": wandb.Image(fig_pk)})
         plt.close(fig_pk)
     else:
@@ -671,7 +707,7 @@ def train(config=None, data_dir=DEFAULT_DATA_DIR, output_dir=DEFAULT_MODEL_DIR):
         # else:
         #     # max_idx = jnp.asarray(len(scale_factors)-1, dtype=jnp.int32)
         #     max_idx = None  # Use all snapshots, hardcoded for now to avoid JIT issues
-        max_idx = jnp.asarray(len(scale_factors)-1, dtype=jnp.int32)
+        max_idx = jnp.asarray(len(scale_factors) - 1, dtype=jnp.int32)
         # logger.info(f"Step {step}: Using snapshots up to index {max_idx} (scale factor {scale_factors[max_idx]:.3f})")
         batch = next(train_data.iterator)
         batch = train_data.move_to_device(batch, device=jax.devices()[0])
@@ -705,8 +741,8 @@ def train(config=None, data_dir=DEFAULT_DATA_DIR, output_dir=DEFAULT_MODEL_DIR):
         pbar.set_postfix({"Loss": float(train_loss)})
 
         eval_freq = 10 * config.training.batch_size
-        
-        # Define a JIT-compiled evaluation step OUTSIDE the step loop 
+
+        # Define a JIT-compiled evaluation step OUTSIDE the step loop
         # (Put this near where you defined update_step)
         # @jax.jit
         # def eval_step(p, b, sf):
@@ -714,7 +750,7 @@ def train(config=None, data_dir=DEFAULT_DATA_DIR, output_dir=DEFAULT_MODEL_DIR):
 
         if step > 0 and step % eval_freq == 0:
             # OPTIMIZATION: Accumulate loss directly on the GPU to avoid sync delays
-            val_loss_device = jnp.zeros(()) 
+            val_loss_device = jnp.zeros(())
             aux_first_batch = None
             val_batch_for_plot = None
 
@@ -722,7 +758,7 @@ def train(config=None, data_dir=DEFAULT_DATA_DIR, output_dir=DEFAULT_MODEL_DIR):
                 val_batch = val_data.move_to_device(val_batch, device=jax.devices()[0])
 
                 # Use JIT-compiled eval step and REMOVE max_idx
-                # out = eval_step(params, val_batch, scale_factors) 
+                # out = eval_step(params, val_batch, scale_factors)
                 out = loss_fn(params, val_batch, scale_factors)
 
                 # --- Handle single vs tuple outputs ---
@@ -746,9 +782,11 @@ def train(config=None, data_dir=DEFAULT_DATA_DIR, output_dir=DEFAULT_MODEL_DIR):
             if aux_first_batch is not None:
                 # Sync just the required aux data to CPU for plotting
                 aux_cpu = jax.device_get(aux_first_batch)
-                
+
                 # Simplified trajectory check (we know shapes are static now)
-                if getattr(aux_cpu, "ndim", 0) >= 1 and aux_cpu.shape[0] == len(scale_factors):
+                if getattr(aux_cpu, "ndim", 0) >= 1 and aux_cpu.shape[0] == len(
+                    scale_factors
+                ):
                     plot_idx = aux_cpu.shape[0] - 1  # Always plot the final snapshot
                 else:
                     plot_idx = 0  # Fallback
@@ -762,7 +800,9 @@ def train(config=None, data_dir=DEFAULT_DATA_DIR, output_dir=DEFAULT_MODEL_DIR):
                     slab_thickness=128,
                 )
             else:
-                logger.info("Validation: loss_fn did not return aux; skipping plot_eval.")
+                logger.info(
+                    "Validation: loss_fn did not return aux; skipping plot_eval."
+                )
 
             # --- Early stopping & Scheduling ---
             early_stop = early_stop.update(val_loss)
@@ -775,10 +815,10 @@ def train(config=None, data_dir=DEFAULT_DATA_DIR, output_dir=DEFAULT_MODEL_DIR):
 
             # --- Logging ---
             learning_rate = opt_state.inner_opt_state[1].hyperparams["learning_rate"]
-            
+
             # Extract train loss to float just once
             train_loss_val = float(jax.device_get(train_loss))
-            
+
             wandb.log(
                 {
                     "train_loss": train_loss_val,
@@ -810,11 +850,9 @@ def train(config=None, data_dir=DEFAULT_DATA_DIR, output_dir=DEFAULT_MODEL_DIR):
     checkpoint(run_dir=run_dir, params=best_params, loss=best_loss, prefix="best")
 
     test_batch = val_data.move_to_device(test_data[0], device=jax.devices()[0])
-    
+
     # BUG FIX: Removed max_idx=None to match new loss_fn signature
-    test_loss, test_pos_pm = loss_fn(
-        best_params, test_batch, scale_factors
-    )
+    test_loss, test_pos_pm = loss_fn(best_params, test_batch, scale_factors)
 
     print(f"Test loss = {float(jax.device_get(test_loss)):.5f}")
     plot_eval(jax.device_get(test_pos_pm), test_batch, max_idx=None, fig_label="test")
