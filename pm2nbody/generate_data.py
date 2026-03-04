@@ -136,12 +136,12 @@ def run_simulation(
 
 
 if __name__ == "__main__":
-    out_dir = Path("/home/jvazquez/diego_villalba/florpi/JaxPM/data")
-    mesh_lr = 64  # 128
-    mesh_hr = 128  # 256 #128
+    out_dir = Path("/cosmos_storage/home/diegovillalba/JaxPM/data")
+    mesh_lr = 128  # 128
+    mesh_hr = 256  # 256 #128
     n_particles_sqrt_3 = mesh_lr
     n_particles = n_particles_sqrt_3**3  # mesh_hr**3
-    n_snapshots = 10
+    n_snapshots = 50
     snapshots = jnp.linspace(0.1, 1.0, n_snapshots)
     L = 256.0
     out_dir /= (
@@ -154,7 +154,7 @@ if __name__ == "__main__":
     omega_c = 0.25
     sigma8 = 0.8
     ics_seed = 0
-    n_sims = 3
+    n_sims = 100
     for n in range(n_sims):
         # Generate density field ICs
         print("*" * 10)
@@ -218,7 +218,7 @@ if __name__ == "__main__":
         jnp.save(out_dir / f"vel_m{mesh_lr}_s{n}.npy", vel_lr / mesh_lr * L)
         jnp.save(out_dir / f"pot_m{mesh_lr}_s{n}.npy", pot_lr)
         jnp.save(out_dir / f"pot_grid_m{mesh_lr}_s{n}.npy", pot_grid_lr)
-        jnp.save(out_dir / f"scale_factors.npy", snapshots)
+        jnp.save(out_dir / "scale_factors.npy", snapshots)
         del vel_hr, pot_hr, ics_hr
         dens_hr, dens_lr, dens_grid_lr = [], [], []
         for s in range(len(snapshots)):

@@ -1,3 +1,4 @@
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -10,6 +11,8 @@ from jaxpm.kernels import (
 from jaxpm.utils import power_spectrum, cross_correlation_coefficients
 from jax.experimental.ode import odeint
 from jaxpm.pm import make_ode_fn, get_delta
+import logging
+logger = logging.getLogger(__name__)
 
 
 def get_gravitational_potential(
@@ -27,6 +30,7 @@ def get_gravitational_potential(
 def get_frozen_potential_loss(
     neural_net,
 ):
+    logger.info("JIT compiling frozen potential loss function.")
     @jax.jit
     def loss_fn(
         params,
@@ -60,25 +64,61 @@ def get_frozen_potential_loss(
     return loss_fn
 
 
-def get_potential_loss(
-    neural_net,
-    cosmology,
-):
+# def get_potential_loss(
+#     neural_net,
+#     cosmology,
+#     correction_type,
+# ):
+#     logger.info("JIT compiling potential loss function.")
+#     logger.info(f"Correction model type: {correction_type}")
+#     @jax.jit
+#     def loss_fn(
+#         params,
+#         grid_data,
+#         pos_lr,
+#         vel_lr,
+#         potential_hr,
+#         scale_factors,
+#         correction_type=correction_type,
+#     ):
+#         n_mesh = grid_data.shape[1]
+
+#         pos_pm, vel_pm = odeint(
+#             make_ode_fn(
+#                 mesh_shape=(n_mesh, n_mesh, n_mesh),
+#                 add_correction=correction_type,
+#                 model=neural_net,
+#             ),
+#             [pos_lr[0], vel_lr[0]],
+#             scale_factors,
+#             cosmology,
+#             params,
+#             rtol=1e-5,
+#             atol=1e-5,
+#         )
+#         predicted_potential = jnp.stack(
+#             [
+#                 get_gravitational_potential(pos_pm[i], n_mesh)[1]
+#                 for i in range(len(pos_pm))
+#             ]
+#         )
+#         return jnp.mean((predicted_potential.squeeze() - potential_hr) ** 2)
+
+#     return loss_fn
+
+def get_potential_loss(neural_net, cosmology, correction_type):
+    correction_type = str(correction_type)
+    logger.info("JIT compiling potential loss function.")
+    logger.info(f"Correction model type: {correction_type}")
+
     @jax.jit
-    def loss_fn(
-        params,
-        grid_data,
-        pos_lr,
-        vel_lr,
-        potential_hr,
-        scale_factors,
-    ):
+    def loss_fn(params, grid_data, pos_lr, vel_lr, potential_hr, scale_factors):
         n_mesh = grid_data.shape[1]
 
         pos_pm, vel_pm = odeint(
             make_ode_fn(
                 mesh_shape=(n_mesh, n_mesh, n_mesh),
-                add_correction=config.correction_model.type,
+                add_correction=correction_type,  
                 model=neural_net,
             ),
             [pos_lr[0], vel_lr[0]],
@@ -88,16 +128,17 @@ def get_potential_loss(
             rtol=1e-5,
             atol=1e-5,
         )
+
         predicted_potential = jnp.stack(
-            [
-                get_gravitational_potential(pos_pm[i], n_mesh)[1]
-                for i in range(len(pos_pm))
-            ]
+            [get_gravitational_potential(pos_pm[i], n_mesh)[1]
+             for i in range(pos_pm.shape[0])]
         )
-        return jnp.mean((predicted_potential.squeeze() - potential_hr) ** 2)
+
+        loss = jnp.mean((predicted_potential.squeeze() - potential_hr) ** 2)
+
+        return loss
 
     return loss_fn
-
 
 def get_position_loss(
     neural_net,
@@ -113,6 +154,7 @@ def get_position_loss(
     log_pos=False,
     fractional_mse=False,
 ):
+    logger.info("JIT compiling position loss function.")
     @jax.jit
     def loss_fn(
         params,

@@ -1,0 +1,29 @@
+[project]
+name = "JaxPM"
+version = "0.0.1"
+description = "A dead simple FastPM implementation in JAX"
+authors = [{ name = "JaxPM developers" }]
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+  "dm-haiku>=0.0.16",
+  "flax>=0.12.3",
+  "ipywidgets>=8.1.8",
+  "jax[cuda13]",
+  "jax_cosmo",
+  "matplotlib>=3.10.8",
+  "optax>=0.2.7",
+  "plotly>=6.5.2",
+  "pyyaml>=6.0.3",
+  "scienceplots>=2.2.1",
+  "setuptools<82",
+  "tqdm>=4.67.3",
+  "wandb>=0.25.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]

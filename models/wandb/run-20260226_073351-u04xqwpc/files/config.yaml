@@ -1,0 +1,108 @@
+_wandb:
+    value:
+        cli_version: 0.25.0
+        e:
+            q3o1u74yfk0eetqp13438ormrqldhiek:
+                codePath: pm2nbody/train.py
+                codePathLocal: pm2nbody/train.py
+                cpu_count: 192
+                cpu_count_logical: 192
+                cudaVersion: "13.0"
+                disk:
+                    /:
+                        total: "972240457728"
+                        used: "175991877632"
+                email: villalbagonzalezdiegoantonio@gmail.com
+                executable: /cosmos_storage/home/diegovillalba/JaxPM/.venv/bin/python3
+                git:
+                    commit: 948113872392a70534c2f76d6912f841f2f8f3a5
+                    remote: git@github.com:DiegoViillalba/JaxPM.git
+                gpu: NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition
+                gpu_count: 1
+                gpu_nvidia:
+                    - architecture: Blackwell
+                      cudaCores: 24064
+                      memoryTotal: "102641958912"
+                      name: NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition
+                      uuid: GPU-86664913-d38d-6dd8-b5b4-160e965dcee0
+                host: cosmos-node.sw.ehu.es
+                memory:
+                    total: "3245931552768"
+                os: Linux-5.14.0-611.30.1.el9_7.x86_64-x86_64-with-glibc2.34
+                program: /cosmos_storage/home/diegovillalba/JaxPM/pm2nbody/train.py
+                python: CPython 3.11.14
+                root: /cosmos_storage/home/diegovillalba/JaxPM/models
+                startedAt: "2026-02-26T06:33:51.671989Z"
+                writerId: q3o1u74yfk0eetqp13438ormrqldhiek
+        m: []
+        python_version: 3.11.14
+        t:
+            "1":
+                - 12
+                - 45
+            "2":
+                - 12
+                - 45
+            "3":
+                - 16
+            "4": 3.11.14
+            "5": 0.25.0
+            "12": 0.25.0
+            "13": linux-x86_64
+correction_model:
+    value:
+        add_particle_velocities: true
+        channels_hidden_dim: 16
+        embed_globals: false
+        global_conditioning: add
+        globals_embedding_dim: 64
+        input_dim: 1
+        kernel_size: 3
+        latent_size: 64
+        n_convolutions: 3
+        n_fully_connected: 2
+        n_globals_embedding: 1
+        n_knots: 16
+        pad_periodic: true
+        type: cnn
+        use_attention_interpolation: false
+data:
+    value:
+        box_size: 256
+        mesh_hr: 256
+        mesh_lr: 128
+        n_particles: 128
+        n_snapshots: 50
+        n_train_sims: 1
+        n_val_sims: 1
+        snapshots: null
+training:
+    value:
+        batch_size: 1
+        checkpoint_every: 5
+        fractional_mse: false
+        lambda_cross_corr: 0
+        lambda_density: 0
+        lambda_pk: 0
+        lambda_pos: 1
+        lambda_velocity: 1
+        log_pos: false
+        loss: mse_positions
+        n_steps: 10
+        patience: 20
+        sample_snapshots: true
+        schedule:
+            factor: 0.5
+            initial_lr: 0
+            min_lr: 1e-06
+            n_steps: 20000
+            patience: 5
+            peak_value: 0.0003
+            type: cosine
+            warmup_steps: 500
+        seed: 0
+        weight_decay: 0.0001
+        weight_snapshots: true
+wandb:
+    value:
+        project: pm2nbody

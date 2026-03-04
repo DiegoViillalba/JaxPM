@@ -1,0 +1,58 @@
+data:
+  mesh_lr: 128
+  mesh_hr: 256
+  n_train_sims: 80
+  n_val_sims: 10
+  snapshots:
+  - 10
+  - 20
+  - 30
+  - 40
+  - 49
+  box_size: 256.0
+  n_snapshots: 50
+  n_particles: 128
+correction_model:
+  type: cnn
+  channels_hidden_dim: 32
+  n_convolutions: 4
+  n_fully_connected: 2
+  input_dim: 2
+  kernel_size: 3
+  pad_periodic: true
+  embed_globals: false
+  n_globals_embedding: 1
+  globals_embedding_dim: 64
+  global_conditioning: add
+  use_attention_interpolation: false
+  add_particle_velocities: true
+  n_knots: 16
+  latent_size: 64
+training:
+  seed: 0
+  n_steps: 1000
+  batch_size: 1
+  patience: 30
+  checkpoint_every: 1000
+  sample_snapshots: true
+  loss: mse_positions
+  weight_snapshots: true
+  lambda_pos: 1.0
+  lambda_velocity: 0.5
+  lambda_density: 0.1
+  lambda_pk: 0.05
+  lambda_cross_corr: 0.0
+  log_pos: false
+  fractional_mse: false
+  weight_decay: 0.0001
+  schedule:
+    type: cosine
+    initial_lr: 0.0
+    peak_value: 0.0002
+    warmup_steps: 2000
+    n_steps: 50000
+    min_lr: 1.0e-06
+    factor: 0.5
+    patience: 5
+wandb:
+  project: pm2nbody
