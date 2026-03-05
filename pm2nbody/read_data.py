@@ -37,57 +37,6 @@ def downsample_to_mesh(
     ].reshape(last_reshape_to)
 
 
-# def get_data(
-#     data_dir: Path,
-#     n_mesh: int,
-#     downsampling_factor: Optional[int] = None,
-#     get_grids: Optional[bool] = False,
-#     snapshots: Optional[List[int]] = None,
-#     box_size: Optional[float] = 256.0,
-#     normalize_to_box: Optional[bool] = True,
-#     idx: Optional[int] = 0,
-#     move_to_cpu: bool = True,
-# ):
-#     pos = jnp.load(data_dir / f"pos_m{n_mesh}_s{idx}.npy")
-#     if snapshots is None:
-#         snapshots = jnp.arange(len(pos))
-#     pos = pos[snapshots, :, :]
-#     vel = jnp.load(data_dir / f"vel_m{n_mesh}_s{idx}.npy")[snapshots]
-#     if normalize_to_box:
-#         pos /= box_size
-#         vel /= box_size
-#     gravitational_potential = jnp.load(data_dir / f"pot_m{n_mesh}_s{idx}.npy")[
-#         snapshots
-#     ]
-#     if downsampling_factor is not None:
-#         pos = downsample_to_mesh(
-#             array=pos,
-#             n_mesh=n_mesh,
-#             downsampling_factor=downsampling_factor,
-#         )
-#         vel = downsample_to_mesh(
-#             array=vel,
-#             n_mesh=n_mesh,
-#             downsampling_factor=downsampling_factor,
-#         )
-#         gravitational_potential = downsample_to_mesh(
-#             array=gravitational_potential,
-#             n_mesh=n_mesh,
-#             downsampling_factor=downsampling_factor,
-#         )
-#     if not get_grids:
-#         return pos, vel, gravitational_potential
-#     potential_grid = jnp.load(data_dir / f"pot_grid_m{n_mesh}_s{idx}.npy")[snapshots]
-#     density_grid = jnp.load(data_dir / f"dens_grid_m{n_mesh}_s{idx}.npy")[snapshots]
-#     # Move all data to cpu:
-#     if move_to_cpu:
-#         cpu = jax.devices("cpu")[0]
-#         pos = jax.device_put(pos, cpu)
-#         vel = jax.device_put(vel, cpu)
-#         gravitational_potential = jax.device_put(gravitational_potential, cpu)
-#         potential_grid = jax.device_put(potential_grid, cpu)
-#         density_grid = jax.device_put(density_grid, cpu)
-#     return pos, vel, gravitational_potential, potential_grid, density_grid
 
 def get_data(
     data_dir: Path,
@@ -161,115 +110,6 @@ def get_data(
         density_grid = jax.device_put(density_grid, cpu)
 
     return pos, vel, gravitational_potential, potential_grid, density_grid
-
-# # 1. Add the PyTree decorator ABOVE the dataclass decorator
-# @jax.tree_util.register_pytree_node_class
-# @dataclass
-# class ResolutionData:
-#     mesh: int
-#     positions: jnp.ndarray
-#     velocities: jnp.ndarray
-#     potential: jnp.ndarray
-#     potential_grid: Optional[jnp.ndarray] = None
-#     density_grid: Optional[jnp.ndarray] = None
-#     grid: Optional[jnp.ndarray] = None
-#     _scaled_to_mesh: bool = False
-
-#     def __post_init__(self):
-#         # we do not build grid here
-#         self.grid = None
-
-#     def get_grid(self):
-#         """Devuelve grid en el mismo device que potential_grid/density_grid.
-#         Re-construye solo si no existe o si cambió el device."""
-#         if self.potential_grid is None or self.density_grid is None:
-#             return None
-
-#         # Ambos deben estar en el mismo device
-#         dev = self.potential_grid.device
-#         if self.density_grid.device != dev:
-#             raise ValueError("potential_grid y density_grid están en devices distintos")
-#         if self.grid is not None and getattr(self, "_grid_device", None) == dev:
-#             return self.grid
-
-#         # Construye y cachea
-#         self.grid = jnp.stack([self.potential_grid, self.density_grid], axis=-1)
-#         self._grid_device = dev
-#         return self.grid
-    
-#     def move_to_device(self, device):
-#         # Particle fields
-#         self.positions = jax.device_put(self.positions, device)
-#         self.velocities = jax.device_put(self.velocities, device)
-#         self.potential = jax.device_put(self.potential, device)
-
-#         # Grid fields (if present)
-#         if self.potential_grid is not None:
-#             self.potential_grid = jax.device_put(self.potential_grid, device)
-#         if self.density_grid is not None:
-#             self.density_grid = jax.device_put(self.density_grid, device)
-
-#         # Build grid on the target device (now guaranteed same device)
-#         if self.potential_grid is not None and self.density_grid is not None:
-#             self.grid = jnp.stack([self.potential_grid, self.density_grid], axis=-1)
-#             self._grid_device = device # Keep tracker in sync
-#         else:
-#             self.grid = None
-        
-#         if not self._scaled_to_mesh:
-#             m = jnp.asarray(self.mesh, dtype=self.positions.dtype)
-#             self.positions = self.positions * m
-#             self.velocities = self.velocities * m
-#             self._scaled_to_mesh = True
-
-#         # Keep mesh as Python int (do NOT device_put mesh)
-#         return self
-
-#     # ==========================================
-#     # JAX PyTree Registration Methods
-#     # ==========================================
-
-#     def tree_flatten(self):
-#         """Tells JAX which attributes are arrays to trace, and which are static metadata."""
-#         # ALL arrays must go into children (even if they are None)
-#         children = (
-#             self.positions, 
-#             self.velocities, 
-#             self.potential, 
-#             self.potential_grid, 
-#             self.density_grid, 
-#             self.grid
-#         )
-        
-#         # Static variables (ints, strings, etc.) go into aux_data
-#         aux_data = {
-#             "mesh": self.mesh
-#         }
-        
-#         return (children, aux_data)
-
-#     @classmethod
-#     def tree_unflatten(cls, aux_data, children):
-#         """Tells JAX how to reconstruct the object inside the JIT compiler."""
-#         # 1. Unpack arrays in the exact order they were packed
-#         positions, velocities, potential, potential_grid, density_grid, grid = children
-        
-#         # 2. Re-instantiate the dataclass. 
-#         # WARNING: This will trigger __post_init__(), which sets obj.grid = None
-#         obj = cls(
-#             mesh=aux_data["mesh"],
-#             positions=positions,
-#             velocities=velocities,
-#             potential=potential,
-#             potential_grid=potential_grid,
-#             density_grid=density_grid,
-#         )
-        
-#         # 3. CRITICAL: Override __post_init__ to restore the traced JAX array for grid!
-#         obj.grid = grid
-        
-#         return obj
-
 
 
 @jax.tree_util.register_pytree_node_class
@@ -348,28 +188,32 @@ class ResolutionData:
         return obj
     
 class PMDataset:
-    def __init__(
-        self,
-        high_res_data,
-        low_res_data,
-        infinite=False,
-    ):
+    def __init__(self, high_res_data, low_res_data, infinite=False, need_grid=False):
         self.hr = high_res_data
         self.lr = low_res_data
         self.infinite = infinite
+        self.need_grid = need_grid
         self.iterator = iter(self)
 
-    def __len__(
-        self,
-    ):
+    def __len__(self):
         return len(self.hr)
 
-    def move_to_device(self, batch_data, device):
-        # DO NOT mutate stored dataset objects (prevents VRAM growth over steps)
-        return {
-            "hr": batch_data["hr"].to_device(device),
-            "lr": batch_data["lr"].to_device(device),
-        }
+    def move_to_device(self, batch_data, device, *, build_grid: Optional[bool] = None):
+        # if build_grid not specified, follow dataset policy
+        if build_grid is None:
+            build_grid = self.need_grid
+
+        hr = batch_data["hr"].to_device(device)
+        lr = batch_data["lr"].to_device(device)
+
+        if build_grid:
+            if (lr.potential_grid is None) or (lr.density_grid is None):
+                raise ValueError("need_grid=True but potential_grid/density_grid are None. Did you load with get_grids=True?")
+            lr.grid = jnp.stack([lr.potential_grid, lr.density_grid], axis=-1)
+        else:
+            lr.grid = None
+
+        return {"hr": hr, "lr": lr}
 
     def __getitem__(self, idx):
         high_res_data = self.hr[idx]
@@ -384,6 +228,7 @@ class PMDataset:
         else:
             for i in range(len(self)):
                 yield self[i]
+
 def load_dataset_for_sim_idx_list(
     idx_list,
     mesh_hr,
@@ -392,6 +237,7 @@ def load_dataset_for_sim_idx_list(
     box_size,
     snapshots=None,
     move_to_cpu=True,
+    need_grid=False,
 ):
     grid_factor = mesh_hr / mesh_lr
     low_res_data, high_res_data = [], []
@@ -476,52 +322,6 @@ def load_dataset_for_sim_idx_list(
 
     return low_res_data, high_res_data
 
-# def load_dataset_for_sim_idx_list(
-#     idx_list,
-#     mesh_hr,
-#     mesh_lr,
-#     data_dir,
-#     box_size,
-#     snapshots=None,
-#     move_to_cpu=True,
-# ):
-#     grid_factor = mesh_hr / mesh_lr
-#     low_res_data, high_res_data = [], []
-#     for idx in idx_list:
-#         logger.info(f"Loading data for simulation index {idx} with mesh_hr={mesh_hr}, mesh_lr={mesh_lr}, box_size={box_size}, snapshots={snapshots}")
-#         pos_hr, vel_hr, grav_pot_hr = get_data(
-#             data_dir=data_dir,
-#             n_mesh=mesh_hr,
-#             downsampling_factor=None,  # mesh_hr // mesh_lr,
-#             idx=idx,
-#             box_size=box_size,
-#             snapshots=snapshots,
-#             move_to_cpu=move_to_cpu,
-#         )
-#         pos_lr, vel_lr, grav_pot_lr, grav_pot_grid_lr, dens_grid_lr = get_data(
-#             data_dir=data_dir,
-#             n_mesh=mesh_lr,
-#             get_grids=True,
-#             idx=idx,
-#             box_size=box_size,
-#             snapshots=snapshots,
-#             move_to_cpu=move_to_cpu,
-#         )
-#         particle_factor = len(pos_hr[0]) / len(pos_lr[0])
-#         up_resolution_factor = particle_factor / grid_factor
-#         grav_pot_grid_lr *= up_resolution_factor
-#         dens_grid_lr *= up_resolution_factor
-#         grav_pot_lr *= up_resolution_factor
-#         high_res_data.append(
-#             ResolutionData(mesh_hr, pos_hr, vel_hr, grav_pot_hr, None, None)
-#         )
-#         low_res_data.append(
-#             ResolutionData(
-#                 mesh_lr, pos_lr, vel_lr, grav_pot_lr, grav_pot_grid_lr, dens_grid_lr
-#             )
-#         )
-#     return low_res_data, high_res_data
-
 
 def load_datasets(
     n_train_sims,
@@ -532,8 +332,10 @@ def load_datasets(
     data_dir,
     box_size,
     snapshots=None,
+    need_grid=False,
 ):
     logger.info(f"Loading datasets with n_train_sims={n_train_sims}, n_val_sims={n_val_sims}, n_test_sims={n_test_sims}, mesh_hr={mesh_hr}, mesh_lr={mesh_lr}, box_size={box_size}, snapshots={snapshots}")
+    logger.info(f"Including grid {need_grid}")
     val_idx_list = list(range(n_val_sims))
     train_idx_list = list(range(n_val_sims, n_val_sims + n_train_sims))
     test_idx_list = list(
@@ -549,6 +351,7 @@ def load_datasets(
         data_dir,
         box_size=box_size,
         snapshots=snapshots,
+        need_grid=need_grid,
     )
     val_low_res_data, val_high_res_data = load_dataset_for_sim_idx_list(
         val_idx_list,
@@ -557,6 +360,7 @@ def load_datasets(
         data_dir,
         box_size=box_size,
         snapshots=snapshots,
+        need_grid=need_grid,
     )
     test_low_res_data, test_high_res_data = load_dataset_for_sim_idx_list(
         test_idx_list,
@@ -565,13 +369,15 @@ def load_datasets(
         data_dir,
         box_size=box_size,
         snapshots=snapshots,
+        need_grid=need_grid,
     )
     return (
         PMDataset(
             train_high_res_data,
             train_low_res_data,
             infinite=True,
+            need_grid=need_grid,
         ),
-        PMDataset(val_high_res_data, val_low_res_data),
-        PMDataset(test_high_res_data, test_low_res_data),
+        PMDataset(val_high_res_data, val_low_res_data,need_grid=need_grid,),
+        PMDataset(test_high_res_data, test_low_res_data,need_grid=need_grid,),
     )

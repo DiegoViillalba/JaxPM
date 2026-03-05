@@ -129,6 +129,8 @@ def get_potential_loss(neural_net, cosmology, correction_type):
             atol=1e-5,
         )
 
+        pos_pm = jnp.mod(pos_pm, n_mesh)
+
         predicted_potential = jnp.stack(
             [get_gravitational_potential(pos_pm[i], n_mesh)[1]
              for i in range(pos_pm.shape[0])]
@@ -136,7 +138,7 @@ def get_potential_loss(neural_net, cosmology, correction_type):
 
         loss = jnp.mean((predicted_potential.squeeze() - potential_hr) ** 2)
 
-        return loss
+        return loss,pos_pm
 
     return loss_fn
 

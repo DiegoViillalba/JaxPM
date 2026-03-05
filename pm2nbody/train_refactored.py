@@ -114,7 +114,7 @@ def default_config() -> AttrDict:
         "data": {
             "mesh_lr": 128,
             "mesh_hr": 256,
-            "n_train_sims": 1,
+            "n_train_sims": 10,
             "n_val_sims": 1,
             "n_test_sims": 1,
             "snapshots": None,
@@ -123,7 +123,7 @@ def default_config() -> AttrDict:
             "n_particles": 128,
         },
         "correction_model": {
-            "type": "kcorr",  # Oprtions aviable kcorr,cnn
+            "type": "cnn",  # Oprtions aviable kcorr,cnn
             "channels_hidden_dim": 16,
             "n_convolutions": 3,
             "n_fully_connected": 2,
@@ -296,7 +296,7 @@ def build_loss_fn(
         single_loss_fn = get_frozen_potential_loss(neural_net=neural_net)
         vmap_loss = jax.vmap(single_loss_fn, in_axes=(None, 0, 0, 0, 0, 0))
 
-        def loss_fn(params, dataset, scale_factors, max_idx):
+        def loss_fn(params, dataset, scale_factors, max_idx, grid=None):
             # 1. Compute loss for ALL snapshots (static shapes)
             loss_array = vmap_loss(
                 params,
@@ -324,20 +324,19 @@ def build_loss_fn(
         )
         logger.info("Using MSE loss on potential (trajectory loss).")
 
-        def loss_fn(params, dataset, scale_factors):
-            # Change .positions to ["positions"]
-            T = min(scale_factors.shape[0], dataset["lr"].positions.shape[0])
-
-            # (Assuming you removed max_idx as discussed, we use T directly or a static MAX_IDX mask)
-            t = T
-
+        def loss_fn(params, dataset, scale_factors, grid=None):
+            T = min(
+                scale_factors.shape[0],
+                dataset["lr"].positions.shape[0],
+                dataset["hr"].positions.shape[0],
+            )
             return single_loss_fn(
                 params,
-                dataset["lr"].grid[:t],
-                dataset["lr"].positions[:t] * dataset["lr"].mesh,
-                dataset["lr"].velocities[:t] * dataset["lr"].mesh,
-                dataset["hr"].potential[:t],  # <- target potencial HR
-                scale_factors[:t],
+                grid,
+                dataset["lr"].positions[:T],
+                dataset["lr"].velocities[:T],
+                dataset["hr"].potential[:T],  # <- target potencial HR
+                scale_factors[:T],
             )
 
     elif training_config.loss == "mse_positions":
@@ -357,7 +356,7 @@ def build_loss_fn(
             fractional_mse=training_config.fractional_mse,
         )
 
-        def loss_fn(params, dataset, scale_factors):
+        def loss_fn(params, dataset, scale_factors,grid=None):
             T = min(
                 scale_factors.shape[0],
                 dataset["lr"].positions.shape[0],
@@ -394,7 +393,7 @@ def build_loss_fn(
 # ==========================================
 
 
-def build_dataloader(config, data_dir=DEFAULT_DATA_DIR):
+def build_dataloader(config, data_dir=DEFAULT_DATA_DIR, need_grid=False):
     cosmology = jc.Planck15(Omega_c=0.25, sigma8=0.8)
     logger.info("Cosmology created")
     data_path = (
@@ -419,6 +418,7 @@ def build_dataloader(config, data_dir=DEFAULT_DATA_DIR):
         data_dir=data_path,
         snapshots=snapshots,
         box_size=config.box_size,
+        need_grid=need_grid,
     )
     logger.info(
         f"Datasets Created: Train ({len(train_data)}), Val ({len(val_data)}), Test ({len(test_data)})"
@@ -664,8 +664,12 @@ def plot_eval(
 
 def train(config=None, data_dir=DEFAULT_DATA_DIR, output_dir=DEFAULT_MODEL_DIR):
     neural_net = build_network(config.correction_model)
+
+    # Only potential-based losses need LR grid channels
+    need_grid = config.training.loss in ("mse_potential", "mse_frozen_potential")
+
     cosmology, scale_factors, train_data, val_data, test_data = build_dataloader(
-        config.data, data_dir=data_dir
+        config.data, data_dir=data_dir, need_grid=need_grid
     )
 
     print(
@@ -676,17 +680,19 @@ def train(config=None, data_dir=DEFAULT_DATA_DIR, output_dir=DEFAULT_MODEL_DIR):
         train_data[0], neural_net=neural_net, model_type=config.correction_model.type
     )
 
-    # Setup WandB and directory
     run = wandb.init(
         project=config.wandb.project, config=config.to_dict(), dir=output_dir
     )
     print(f"Run name: {run.name}")
+
     run_dir = output_dir / f"{run.name}"
     run_dir.mkdir(exist_ok=True, parents=True)
 
     with open(run_dir / "config.yaml", "w") as f:
         yaml.dump(config.to_dict(), f)
 
+    # IMPORTANT: build_loss_fn must accept grid=None:
+    # loss_fn(params, dataset, scale_factors, grid=None)
     loss_fn = build_loss_fn(
         config.training,
         neural_net,
@@ -705,48 +711,48 @@ def train(config=None, data_dir=DEFAULT_DATA_DIR, output_dir=DEFAULT_MODEL_DIR):
     early_stop = EarlyStopping(patience=config.training.patience)
     best_params = params
     best_loss = float("inf")
-    rng = jax.random.PRNGKey(0)
 
-    # Value and Grad wrapper for single step
-    # Remove 'midx' from the arguments and the call
-    def train_loss_fn(p, batch, sf):
-        out = loss_fn(params=p, dataset=batch, scale_factors=sf)
-        if config.training.loss == "mse_potential":
-            return out
-        else:
-            return out[0]
+    logger.info(f"need_grid = {need_grid}")
 
-    # Create the JIT-compiled update step
+    # -----------------------
+    # Loss wrapper (always receives grid; can be None)
+    # -----------------------
+    def train_loss_fn(p, batch, sf, grid):
+        out = loss_fn(params=p, dataset=batch, scale_factors=sf, grid=grid)
+        return out[0] if isinstance(out, tuple) else out
+
     @jax.jit
-    def update_step(params, opt_state, batch, scale_factors):
+    def update_step(params, opt_state, batch, scale_factors, grid):
         train_loss, grads = jax.value_and_grad(train_loss_fn)(
-            params, batch, scale_factors
+            params, batch, scale_factors, grid
         )
         updates, opt_state = optimizer.update(grads, opt_state, params)
         params = optax.apply_updates(params, updates)
         return train_loss, params, opt_state
 
     pbar = tqdm(range(config.training.n_steps), desc="Training")
+    eval_freq = 10 * config.training.batch_size
 
     for step in pbar:
-
+        # --------- Train batch ---------
         batch = next(train_data.iterator)
-        batch = train_data.move_to_device(batch, device=jax.devices()[0])
-
-        # Execute the JITted step
-        train_loss, params, opt_state = update_step(
-            params, opt_state, batch, scale_factors
+        batch = train_data.move_to_device(
+            batch, device=jax.devices()[0], build_grid=need_grid
         )
 
-        pbar.set_postfix({"Loss": float(train_loss)})
+        # grid passed explicitly to JIT (or None)
+        grid = batch["lr"].grid if need_grid else None
+        if need_grid and grid is None:
+            raise ValueError(
+                "need_grid=True but batch['lr'].grid is None. Check dataloader and move_to_device(build_grid=True)."
+            )
 
-        eval_freq = 10 * config.training.batch_size
+        train_loss, params, opt_state = update_step(
+            params, opt_state, batch, scale_factors, grid
+        )
+        pbar.set_postfix({"Loss": float(jax.device_get(train_loss))})
 
-        # TODO a JIT-compiled evaluation step OUTSIDE the step loop
-        # @jax.jit
-        # def eval_step(p, b, sf):
-        #     return loss_fn(p, b, sf)
-
+        # --------- Validation ---------
         if step > 0 and step % eval_freq == 0:
             val_loss_device = jnp.zeros(())
             aux_first_batch = None
@@ -754,8 +760,12 @@ def train(config=None, data_dir=DEFAULT_DATA_DIR, output_dir=DEFAULT_MODEL_DIR):
             count = 0
 
             for i, val_batch in enumerate(val_data):
-                val_batch = val_data.move_to_device(val_batch, device=jax.devices()[0])
-                out = loss_fn(params, val_batch, scale_factors)
+                val_batch = val_data.move_to_device(
+                    val_batch, device=jax.devices()[0], build_grid=need_grid
+                )
+                grid_val = val_batch["lr"].grid if need_grid else None
+
+                out = loss_fn(params, val_batch, scale_factors, grid=grid_val)
 
                 if isinstance(out, tuple):
                     vl, aux = out
@@ -771,9 +781,9 @@ def train(config=None, data_dir=DEFAULT_DATA_DIR, output_dir=DEFAULT_MODEL_DIR):
 
             val_loss = float(jax.device_get(val_loss_device)) / max(count, 1)
 
+            # Plot only if aux exists (positions loss returns aux; potential loss may not)
             if aux_first_batch is not None:
                 aux_cpu = jax.device_get(aux_first_batch)
-
                 mesh_plot = int(val_batch_for_plot["lr"].mesh)
                 T = aux_cpu.shape[0]
                 plot_indices = [0, T // 2, T - 1]
@@ -785,14 +795,13 @@ def train(config=None, data_dir=DEFAULT_DATA_DIR, output_dir=DEFAULT_MODEL_DIR):
                         max_idx=idx,
                         fig_label=f"val_t{idx:02d}",
                         slab_thickness=64,
-                        # mesh_plot=mesh_plot,
-                        # assume_mesh_units=True,
-                        
+                        use_wandb=True,
                     )
             else:
-                logger.info("Validation: loss_fn did not return aux; skipping plot_eval.")
+                logger.info(
+                    "Validation: loss_fn did not return aux; skipping plot_eval."
+                )
 
-            # --- Early stopping & Scheduling ---
             early_stop = early_stop.update(val_loss)
             if early_stop.has_improved:
                 best_params = params
@@ -801,10 +810,7 @@ def train(config=None, data_dir=DEFAULT_DATA_DIR, output_dir=DEFAULT_MODEL_DIR):
             if hasattr(schedule, "step"):
                 schedule.step(val_loss)
 
-            # --- Logging ---
             learning_rate = opt_state.inner_opt_state[1].hyperparams["learning_rate"]
-
-            # Extract train loss to float just once
             train_loss_val = float(jax.device_get(train_loss))
 
             wandb.log(
@@ -822,28 +828,44 @@ def train(config=None, data_dir=DEFAULT_DATA_DIR, output_dir=DEFAULT_MODEL_DIR):
                 print(f"Early stopping triggered at step {step}.")
                 break
 
-        # 4. Save Weights
+        # --------- Checkpoints ---------
         if step > 0 and step % config.training.checkpoint_every == 0:
             checkpoint(
                 run_dir=run_dir,
-                loss=train_loss,  # Still okay to pass the JAX array here if your checkpoint handles it
+                loss=train_loss,
                 params=params,
                 prefix="train",
                 step=step,
             )
 
-    # ==========================================
-    # 5. Final Evaluation on Test Set
-    # ==========================================
+    # -----------------------
+    # Final evaluation
+    # -----------------------
     checkpoint(run_dir=run_dir, params=best_params, loss=best_loss, prefix="best")
 
-    test_batch = val_data.move_to_device(test_data[0], device=jax.devices()[0])
+    test_batch = val_data.move_to_device(
+        test_data[0], device=jax.devices()[0], build_grid=need_grid
+    )
+    grid_test = test_batch["lr"].grid if need_grid else None
 
-    # BUG FIX: Removed max_idx=None to match new loss_fn signature
-    test_loss, test_pos_pm = loss_fn(best_params, test_batch, scale_factors)
+    out = loss_fn(best_params, test_batch, scale_factors, grid=grid_test)
+    if isinstance(out, tuple):
+        test_loss, test_aux = out
+    else:
+        test_loss, test_aux = out, None
 
     print(f"Test loss = {float(jax.device_get(test_loss)):.5f}")
-    plot_eval(jax.device_get(test_pos_pm), test_batch, max_idx=None, fig_label="test")
+
+    if test_aux is not None:
+        plot_eval(
+            jax.device_get(test_aux),
+            test_batch,
+            max_idx=None,
+            fig_label="test",
+            use_wandb=True,
+        )
+    else:
+        logger.info("Test: loss_fn did not return aux; skipping plot_eval.")
 
     wandb.finish()
     return best_loss
