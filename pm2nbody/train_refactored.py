@@ -39,7 +39,6 @@ from loss import (
     get_frozen_potential_loss,
     get_potential_loss,
     get_position_loss,
-    get_mse_pos,
 )
 # If using Plateau scheduling in the future, uncomment:
 # from jaxpm.nn_utils import ReduceLROnPlateau
@@ -117,7 +116,7 @@ def default_config() -> AttrDict:
             "mesh_hr": 256,
             "n_train_sims": 1,
             "n_val_sims": 1,
-            "n_test_sims": 0,
+            "n_test_sims": 1,
             "snapshots": None,
             "box_size": 256.0,
             "n_snapshots": 50,
@@ -293,8 +292,6 @@ def build_loss_fn(
     )
     logger.info(f"Correction model type for loss function: {correction_type}")
 
-    MAX_IDX = int(training_config.max_idx)
-
     if training_config.loss == "mse_frozen_potential":
         single_loss_fn = get_frozen_potential_loss(neural_net=neural_net)
         vmap_loss = jax.vmap(single_loss_fn, in_axes=(None, 0, 0, 0, 0, 0))
@@ -370,9 +367,9 @@ def build_loss_fn(
 
             return single_loss_fn(
                 params,
-                dataset["lr"].positions[:T] ,
-                dataset["lr"].velocities[:T] ,
-                dataset["hr"].positions[:T] ,
+                dataset["lr"].positions[:T],
+                dataset["lr"].velocities[:T],
+                dataset["hr"].positions[:T],
                 dataset["hr"].velocities[:T],
                 scale_factors[:T],
             )
@@ -514,39 +511,48 @@ def plot_eval(
     plot_log=True,
     slab_thickness=5,
 ):
+    """
+    Plots:
+      1) 2D slab projection of delta (or log10(1+delta))
+      2) Power spectrum ratio P(k)/P_HR(k)
+
+    Robustness fixes:
+      - Always deposit on LR mesh (mesh_plot = val_data["lr"].mesh)
+      - Converts inputs to mesh units if they are in box units
+      - Wrap positions to [0, mesh_plot) before CIC deposit
+      - Power spectrum: forces numpy arrays, filters invalid bins (pk_hr<=0, NaNs/Infs)
+    """
     max_idx = max_idx if max_idx is not None else -1
-    mesh_plot = val_data["lr"].mesh  # siempre plot en la malla LR
+    mesh_plot = val_data["lr"].mesh  # always plot on LR mesh
 
     def to_mesh(pos, mesh_plot):
         """
-        Convierte posiciones a unidades de malla [0, mesh_plot).
-        - Si ya están en mesh units (max ~ mesh_plot), NO escala.
-        - Si están en box units [0,1), escala por mesh_plot.
+        Convert positions to mesh units [0, mesh_plot).
+        - If already mesh units (max ~ mesh_plot), do nothing.
+        - If box units [0,1), scale by mesh_plot.
         """
         pos = np.asarray(pos)
         mx = np.max(pos)
-        # Heurística robusta:
-        # box units: mx ~ 1
-        # mesh units: mx ~ mesh_plot
         if mx <= 2.0:
             return pos * mesh_plot
-        else:
-            return pos  # ya está en mesh units
+        return pos
 
-    # --- Convertimos a mesh units para depositar ---
-    # PM aux: normalmente ya viene en mesh units
-    pos_pm = to_mesh(val_pos_pm[max_idx], mesh_plot)
-
-    # HR/LR: depende de tu convención; detectamos
-    pos_hr = to_mesh(val_data["hr"].positions[max_idx], mesh_plot)
+    # --- Convert to mesh units for deposit ---
+    pos_pm = to_mesh(val_pos_pm[max_idx], mesh_plot)  # typically mesh units
+    pos_hr = to_mesh(val_data["hr"].positions[max_idx], mesh_plot)  # may be box or mesh
     pos_lr = to_mesh(val_data["lr"].positions[max_idx], mesh_plot)
 
-    # Deltas
+    # --- Wrap to [0, mesh_plot) to avoid out-of-range deposit artifacts ---
+    pos_pm = np.mod(pos_pm, mesh_plot)
+    pos_hr = np.mod(pos_hr, mesh_plot)
+    pos_lr = np.mod(pos_lr, mesh_plot)
+
+    # --- Deltas (density contrast) ---
     delta_pm = get_delta(pos_pm, (mesh_plot, mesh_plot, mesh_plot))
     delta_hr = get_delta(pos_hr, (mesh_plot, mesh_plot, mesh_plot))
     delta_lr = get_delta(pos_lr, (mesh_plot, mesh_plot, mesh_plot))
 
-    # Proyección (usa un slab pequeño, no toda la caja)
+    # --- Slab projection around center (avoid full-box cancellation for delta) ---
     z0 = mesh_plot // 2
     h = max(1, slab_thickness // 2)
     sl = slice(max(z0 - h, 0), min(z0 + h, mesh_plot))
@@ -555,7 +561,7 @@ def plot_eval(
     proj_pm = delta_pm[:, :, sl].sum(axis=-1)
     proj_hr = delta_hr[:, :, sl].sum(axis=-1)
 
-    # Mejor: log(1+delta) en vez de log(delta+offset)
+    # --- Visualization transform ---
     if plot_log:
         eps = 1e-4
         proj_lr = np.log10(np.clip(1.0 + proj_lr, eps, None))
@@ -585,34 +591,66 @@ def plot_eval(
 
     if use_wandb:
         import wandb
+
         wandb.log({f"{fig_label}_delta": wandb.Image(fig_delta)})
         plt.close(fig_delta)
     else:
         plt.show()
 
-    # --- Power Spectrum ---
+    # --- Power Spectrum (robust) ---
     def get_pk(delta):
-        return power_spectrum(
-            compensate_cic(delta),
+        # Ensure CPU numpy arrays for power_spectrum / compensate_cic
+        delta_np = np.asarray(delta)
+        delta_np = compensate_cic(delta_np)
+        k, pk = power_spectrum(
+            delta_np,
             boxsize=np.array([box_size] * 3),
             kmin=np.pi / box_size,
             dk=2 * np.pi / box_size,
         )
+        return np.asarray(k), np.asarray(pk)
 
     k, pk_hr = get_pk(delta_hr)
     _, pk_lr = get_pk(delta_lr)
     _, pk_pm = get_pk(delta_pm)
 
+    # Filter invalid bins to avoid blank/NaN plots
+    valid = (
+        np.isfinite(k)
+        & np.isfinite(pk_hr)
+        & (pk_hr > 0)
+        & np.isfinite(pk_lr)
+        & np.isfinite(pk_pm)
+    )
+    k = k[valid]
+    pk_hr = pk_hr[valid]
+    pk_lr = pk_lr[valid]
+    pk_pm = pk_pm[valid]
+
     fig_pk, ax_pk = plt.subplots(figsize=(8, 6))
-    ax_pk.axhline(y=1, linestyle="dashed", color="black")  # ratio=1 referencia
-    ax_pk.semilogx(k, pk_lr / pk_hr, label="LR")
-    ax_pk.semilogx(k, pk_pm / pk_hr, label="Nbodyify")
+    ax_pk.axhline(y=1, linestyle="dashed", color="black")  # ratio=1 reference
+
+    if k.size > 0:
+        ax_pk.semilogx(k, pk_lr / pk_hr, label="LR")
+        ax_pk.semilogx(k, pk_pm / pk_hr, label="Nbodyify")
+    else:
+        ax_pk.text(
+            0.5,
+            0.5,
+            "No valid P(k) bins (pk_hr<=0 or NaNs).",
+            ha="center",
+            va="center",
+            transform=ax_pk.transAxes,
+        )
+
     ax_pk.legend()
     ax_pk.set_xlabel(r"$k$ [$h \ \mathrm{Mpc}^{-1}$]")
     ax_pk.set_ylabel(r"$P(k)/P_\mathrm{HR}(k)$")
+    ax_pk.set_title("Power spectrum ratio")
 
     if use_wandb:
         import wandb
+
         wandb.log({f"{fig_label}_pk": wandb.Image(fig_pk)})
         plt.close(fig_pk)
     else:
@@ -689,120 +727,70 @@ def train(config=None, data_dir=DEFAULT_DATA_DIR, output_dir=DEFAULT_MODEL_DIR):
         return train_loss, params, opt_state
 
     pbar = tqdm(range(config.training.n_steps), desc="Training")
-    # def train_loss_fn(p, batch, sf, midx):
-    #     if config.training.loss == "mse_potential":
-    #         return loss_fn(params=p, dataset=batch, scale_factors=sf, max_idx=midx)
-    #     else:
-    #         return loss_fn(params=p, dataset=batch, scale_factors=sf, max_idx=midx)[0]
-
-    # pbar = tqdm(range(config.training.n_steps), desc="Training")
 
     for step in pbar:
-        # 1. Prepare Batch & Dynamic Slices
-        # if config.training.sample_snapshots:
-        #     rng, _ = jax.random.split(rng)
-        #     max_idx = jax.random.randint(
-        #         rng, minval=10, maxval=len(scale_factors), shape=(1,)
-        #     )[0]
-        # else:
-        #     # max_idx = jnp.asarray(len(scale_factors)-1, dtype=jnp.int32)
-        #     max_idx = None  # Use all snapshots, hardcoded for now to avoid JIT issues
-        max_idx = jnp.asarray(len(scale_factors) - 1, dtype=jnp.int32)
-        # logger.info(f"Step {step}: Using snapshots up to index {max_idx} (scale factor {scale_factors[max_idx]:.3f})")
+
         batch = next(train_data.iterator)
         batch = train_data.move_to_device(batch, device=jax.devices()[0])
-        # raw_batch = next(train_data.iterator)
-        # raw_batch = train_data.move_to_device(raw_batch, device=jax.devices()[0])
 
-        # # Extract the arrays into standard JAX-friendly dictionaries
-        # batch = {
-        #     "lr": {
-        #         "grid": raw_batch["lr"].grid,
-        #         "positions": raw_batch["lr"].positions,
-        #         "velocities": raw_batch["lr"].velocities,
-        #         "potential": getattr(raw_batch["lr"], "potential", None),
-        #         "mesh": raw_batch["lr"].mesh,
-        #     },
-        #     "hr": {
-        #         "grid": raw_batch["hr"].grid,
-        #         "positions": raw_batch["hr"].positions,
-        #         "velocities": raw_batch["hr"].velocities,
-        #         "potential": getattr(raw_batch["hr"], "potential", None),
-        #         "mesh": raw_batch["hr"].mesh,
-        #     }
-        # }
         # Execute the JITted step
         train_loss, params, opt_state = update_step(
             params, opt_state, batch, scale_factors
         )
-        # updates, opt_state = optimizer.update(grads, opt_state, params)
-        # params = optax.apply_updates(params, updates)
 
         pbar.set_postfix({"Loss": float(train_loss)})
 
         eval_freq = 10 * config.training.batch_size
 
-        # Define a JIT-compiled evaluation step OUTSIDE the step loop
-        # (Put this near where you defined update_step)
+        # TODO a JIT-compiled evaluation step OUTSIDE the step loop
         # @jax.jit
         # def eval_step(p, b, sf):
         #     return loss_fn(p, b, sf)
 
         if step > 0 and step % eval_freq == 0:
-            # OPTIMIZATION: Accumulate loss directly on the GPU to avoid sync delays
             val_loss_device = jnp.zeros(())
             aux_first_batch = None
             val_batch_for_plot = None
+            count = 0
 
             for i, val_batch in enumerate(val_data):
                 val_batch = val_data.move_to_device(val_batch, device=jax.devices()[0])
-
-                # Use JIT-compiled eval step and REMOVE max_idx
-                # out = eval_step(params, val_batch, scale_factors)
                 out = loss_fn(params, val_batch, scale_factors)
 
-                # --- Handle single vs tuple outputs ---
                 if isinstance(out, tuple):
                     vl, aux = out
                 else:
                     vl, aux = out, None
 
-                # Accumulate on GPU (fast)
                 val_loss_device += vl
+                count += 1
 
-                # Store ONLY the first batch's aux for plotting (sync to CPU later)
                 if i == 0:
                     val_batch_for_plot = val_batch
                     aux_first_batch = aux
 
-            # OPTIMIZATION: Sync to CPU exactly ONCE after the whole validation set is done
-            val_loss = float(jax.device_get(val_loss_device)) / len(val_data)
+            val_loss = float(jax.device_get(val_loss_device)) / max(count, 1)
 
-            # --- Plotting ---
             if aux_first_batch is not None:
-                # Sync just the required aux data to CPU for plotting
                 aux_cpu = jax.device_get(aux_first_batch)
 
-                # Simplified trajectory check (we know shapes are static now)
-                if getattr(aux_cpu, "ndim", 0) >= 1 and aux_cpu.shape[0] == len(
-                    scale_factors
-                ):
-                    plot_idx = aux_cpu.shape[0] - 1  # Always plot the final snapshot
-                else:
-                    plot_idx = 0  # Fallback
+                mesh_plot = int(val_batch_for_plot["lr"].mesh)
+                T = aux_cpu.shape[0]
+                plot_indices = [0, T // 2, T - 1]
 
-                # Clean plot call
-                plot_eval(
-                    aux_cpu,
-                    val_batch_for_plot,
-                    max_idx=plot_idx,
-                    plot_log=True,
-                    slab_thickness=128,
-                )
+                for idx in plot_indices:
+                    plot_eval(
+                        aux_cpu,
+                        val_batch_for_plot,
+                        max_idx=idx,
+                        fig_label=f"val_t{idx:02d}",
+                        slab_thickness=64,
+                        # mesh_plot=mesh_plot,
+                        # assume_mesh_units=True,
+                        
+                    )
             else:
-                logger.info(
-                    "Validation: loss_fn did not return aux; skipping plot_eval."
-                )
+                logger.info("Validation: loss_fn did not return aux; skipping plot_eval.")
 
             # --- Early stopping & Scheduling ---
             early_stop = early_stop.update(val_loss)
