@@ -136,18 +136,20 @@ class ResolutionData:
         if self.density_grid.device != dev:
             raise ValueError("potential_grid y density_grid están en devices distintos")
         return jnp.stack([self.potential_grid, self.density_grid], axis=-1)
-
-    def to_device(self, device):
-        """
-        Return a NEW ResolutionData on `device` (does NOT mutate the original object).
-        TRANSPORT ONLY: NO RESCALING HERE (prevents double scaling / mesh^2 bugs).
-        """
+    
+    def to_device(self, device, include_grids: bool = True):
         pos = jax.device_put(self.positions, device)
         vel = jax.device_put(self.velocities, device)
         pot = jax.device_put(self.potential, device)
 
-        potg = jax.device_put(self.potential_grid, device) if self.potential_grid is not None else None
-        deng = jax.device_put(self.density_grid, device) if self.density_grid is not None else None
+        # Solo movemos al GPU si se solicita Y si existen los datos
+        potg = None
+        deng = None
+        if include_grids:
+            if self.potential_grid is not None:
+                potg = jax.device_put(self.potential_grid, device)
+            if self.density_grid is not None:
+                deng = jax.device_put(self.density_grid, device)
 
         return ResolutionData(
             mesh=self.mesh,
@@ -156,9 +158,29 @@ class ResolutionData:
             potential=pot,
             potential_grid=potg,
             density_grid=deng,
-            grid=None,
-            _scaled_to_mesh=False,
         )
+    # def to_device(self, device):
+    #     """
+    #     Return a NEW ResolutionData on `device` (does NOT mutate the original object).
+    #     TRANSPORT ONLY: NO RESCALING HERE (prevents double scaling / mesh^2 bugs).
+    #     """
+    #     pos = jax.device_put(self.positions, device)
+    #     vel = jax.device_put(self.velocities, device)
+    #     pot = jax.device_put(self.potential, device)
+
+    #     potg = jax.device_put(self.potential_grid, device) if self.potential_grid is not None else None
+    #     deng = jax.device_put(self.density_grid, device) if self.density_grid is not None else None
+
+    #     return ResolutionData(
+    #         mesh=self.mesh,
+    #         positions=pos,
+    #         velocities=vel,
+    #         potential=pot,
+    #         potential_grid=potg,
+    #         density_grid=deng,
+    #         grid=None,
+    #         _scaled_to_mesh=False,
+    #     )
 
     # PyTree methods (no derived grid)
     def tree_flatten(self):
@@ -199,16 +221,14 @@ class PMDataset:
         return len(self.hr)
 
     def move_to_device(self, batch_data, device, *, build_grid: Optional[bool] = None):
-        # if build_grid not specified, follow dataset policy
         if build_grid is None:
             build_grid = self.need_grid
 
-        hr = batch_data["hr"].to_device(device)
-        lr = batch_data["lr"].to_device(device)
+        # Pasamos build_grid para que to_device decida si sube los datos al GPU
+        hr = batch_data["hr"].to_device(device, include_grids=False) # HR usualmente no necesita grid
+        lr = batch_data["lr"].to_device(device, include_grids=build_grid)
 
         if build_grid:
-            if (lr.potential_grid is None) or (lr.density_grid is None):
-                raise ValueError("need_grid=True but potential_grid/density_grid are None. Did you load with get_grids=True?")
             lr.grid = jnp.stack([lr.potential_grid, lr.density_grid], axis=-1)
         else:
             lr.grid = None

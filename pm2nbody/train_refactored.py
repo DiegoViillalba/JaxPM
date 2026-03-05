@@ -160,12 +160,12 @@ def default_config() -> AttrDict:
             "schedule": {
                 "type": "cosine",
                 "initial_lr": 0.0,
-                "peak_value": 3e-4,
+                "peak_value": 4e-4,
                 "warmup_steps": 5,
                 "n_steps": 100,
                 "factor": 0.5,
                 "patience": 5,
-                "min_lr": 1e-6,
+                "min_lr": 5e-5,
             },
         },
         "wandb": {
