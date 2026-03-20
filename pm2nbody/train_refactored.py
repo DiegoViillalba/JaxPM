@@ -114,7 +114,7 @@ def default_config() -> AttrDict:
         "data": {
             "mesh_lr": 128,
             "mesh_hr": 256,
-            "n_train_sims": 10,
+            "n_train_sims": 40,
             "n_val_sims": 1,
             "n_test_sims": 1,
             "snapshots": None,
@@ -141,7 +141,7 @@ def default_config() -> AttrDict:
         },
         "training": {
             "seed": 0,
-            "n_steps": 100,
+            "n_steps": 150,
             "batch_size": 1,
             "patience": 20,
             "checkpoint_every": 5,
