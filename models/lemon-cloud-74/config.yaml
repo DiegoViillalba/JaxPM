@@ -21,7 +21,7 @@ data:
   n_particles: 128
   n_snapshots: 50
   n_test_sims: 1
-  n_train_sims: 10
+  n_train_sims: 1
   n_val_sims: 1
   snapshots: null
 training:

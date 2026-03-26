@@ -76,7 +76,7 @@ def cic_read(mesh, positions):
 
     return (
         mesh[
-            neighboor_coords[..., 0], neighboor_coords[..., 1], neighboor_coords[..., 3]
+            neighboor_coords[..., 0], neighboor_coords[..., 1], neighboor_coords[..., 2] # FIX was 3 but should be 2 (20/03/2026)
         ]
         * kernel
     ).sum(axis=-1)

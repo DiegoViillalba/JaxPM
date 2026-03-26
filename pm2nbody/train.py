@@ -945,3 +945,17 @@ if __name__ == "__main__":
     print(config.to_dict())
 
     best_loss = train(config)
+
+# # Copiar config original
+# cp /cosmos_storage/home/diegovillalba/JaxPM/models/electric-dream-78/config.yaml \
+#    /cosmos_storage/home/diegovillalba/JaxPM/models/electric_dream_bugfix.yaml
+
+# # Lanzar
+# python train_refactored.py --config /cosmos_storage/home/diegovillalba/JaxPM/models/electric_dream_bugfix.yaml
+
+
+# nohup python train_refactored.py \
+#   --config /cosmos_storage/home/diegovillalba/JaxPM/models/electric_dream_bugfix.yaml\
+#   > /cosmos_storage/home/diegovillalba/JaxPM/logs/electric_dream_bugfix.log 2>&1 &
+
+# echo "PID: $!"
