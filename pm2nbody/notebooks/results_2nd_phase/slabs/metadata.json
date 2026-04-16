@@ -1,0 +1,952 @@
+{
+  "LR_baseline_sim90_snap00.npy": {
+    "run": "LR (baseline)",
+    "model_type": "baseline",
+    "sim_id": 90,
+    "snap_idx": 0,
+    "a": 0.10000000149011612,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 1.7697796821594238,
+    "std": 0.3624962866306305,
+    "is_hr_target": false
+  },
+  "HR_target_sim90_snap00.npy": {
+    "run": "HR (target)",
+    "model_type": "hr_target",
+    "sim_id": 90,
+    "snap_idx": 0,
+    "a": 0.10000000149011612,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 1.7627489566802979,
+    "std": 0.35148048400878906,
+    "is_hr_target": true
+  },
+  "LR_baseline_sim90_snap12.npy": {
+    "run": "LR (baseline)",
+    "model_type": "baseline",
+    "sim_id": 90,
+    "snap_idx": 12,
+    "a": 0.3204081654548645,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 2.2455084323883057,
+    "std": 0.34565120935440063,
+    "is_hr_target": false
+  },
+  "HR_target_sim90_snap12.npy": {
+    "run": "HR (target)",
+    "model_type": "hr_target",
+    "sim_id": 90,
+    "snap_idx": 12,
+    "a": 0.3204081654548645,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 2.2892651557922363,
+    "std": 0.34773385524749756,
+    "is_hr_target": true
+  },
+  "LR_baseline_sim90_snap24.npy": {
+    "run": "LR (baseline)",
+    "model_type": "baseline",
+    "sim_id": 90,
+    "snap_idx": 24,
+    "a": 0.5408163070678711,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 2.9113261699676514,
+    "std": 0.39758938550949097,
+    "is_hr_target": false
+  },
+  "HR_target_sim90_snap24.npy": {
+    "run": "HR (target)",
+    "model_type": "hr_target",
+    "sim_id": 90,
+    "snap_idx": 24,
+    "a": 0.5408163070678711,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 2.861372470855713,
+    "std": 0.4182753562927246,
+    "is_hr_target": true
+  },
+  "LR_baseline_sim90_snap37.npy": {
+    "run": "LR (baseline)",
+    "model_type": "baseline",
+    "sim_id": 90,
+    "snap_idx": 37,
+    "a": 0.7795918583869934,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 3.0549087524414062,
+    "std": 0.44189170002937317,
+    "is_hr_target": false
+  },
+  "HR_target_sim90_snap37.npy": {
+    "run": "HR (target)",
+    "model_type": "hr_target",
+    "sim_id": 90,
+    "snap_idx": 37,
+    "a": 0.7795918583869934,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 3.025395393371582,
+    "std": 0.46887362003326416,
+    "is_hr_target": true
+  },
+  "LR_baseline_sim90_snap49.npy": {
+    "run": "LR (baseline)",
+    "model_type": "baseline",
+    "sim_id": 90,
+    "snap_idx": 49,
+    "a": 1.0,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 3.1370599269866943,
+    "std": 0.46655017137527466,
+    "is_hr_target": false
+  },
+  "HR_target_sim90_snap49.npy": {
+    "run": "HR (target)",
+    "model_type": "hr_target",
+    "sim_id": 90,
+    "snap_idx": 49,
+    "a": 1.0,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 3.299130439758301,
+    "std": 0.4949129819869995,
+    "is_hr_target": true
+  },
+  "cnn_electric-dream_sim90_snap00.npy": {
+    "run": "cnn electric-dream",
+    "model_type": "cnn",
+    "sim_id": 90,
+    "snap_idx": 0,
+    "a": 0.10000000149011612,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 1.7697796821594238,
+    "std": 0.3624962866306305,
+    "is_hr_target": false
+  },
+  "cnn_electric-dream_sim90_snap12.npy": {
+    "run": "cnn electric-dream",
+    "model_type": "cnn",
+    "sim_id": 90,
+    "snap_idx": 12,
+    "a": 0.3204081654548645,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 2.3579182624816895,
+    "std": 0.3479478657245636,
+    "is_hr_target": false
+  },
+  "cnn_electric-dream_sim90_snap24.npy": {
+    "run": "cnn electric-dream",
+    "model_type": "cnn",
+    "sim_id": 90,
+    "snap_idx": 24,
+    "a": 0.5408163070678711,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 2.8397817611694336,
+    "std": 0.4046090543270111,
+    "is_hr_target": false
+  },
+  "cnn_electric-dream_sim90_snap37.npy": {
+    "run": "cnn electric-dream",
+    "model_type": "cnn",
+    "sim_id": 90,
+    "snap_idx": 37,
+    "a": 0.7795918583869934,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 2.9565515518188477,
+    "std": 0.4501010477542877,
+    "is_hr_target": false
+  },
+  "cnn_electric-dream_sim90_snap49.npy": {
+    "run": "cnn electric-dream",
+    "model_type": "cnn",
+    "sim_id": 90,
+    "snap_idx": 49,
+    "a": 1.0,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 3.08752703666687,
+    "std": 0.4747334420681,
+    "is_hr_target": false
+  },
+  "kcorr_gallant-lion-73_sim90_snap00.npy": {
+    "run": "kcorr gallant-lion-73",
+    "model_type": "kcorr",
+    "sim_id": 90,
+    "snap_idx": 0,
+    "a": 0.10000000149011612,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 1.7697796821594238,
+    "std": 0.3624962866306305,
+    "is_hr_target": false
+  },
+  "kcorr_gallant-lion-73_sim90_snap12.npy": {
+    "run": "kcorr gallant-lion-73",
+    "model_type": "kcorr",
+    "sim_id": 90,
+    "snap_idx": 12,
+    "a": 0.3204081654548645,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 2.1590397357940674,
+    "std": 0.33627796173095703,
+    "is_hr_target": false
+  },
+  "kcorr_gallant-lion-73_sim90_snap24.npy": {
+    "run": "kcorr gallant-lion-73",
+    "model_type": "kcorr",
+    "sim_id": 90,
+    "snap_idx": 24,
+    "a": 0.5408163070678711,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 2.780061960220337,
+    "std": 0.3753373622894287,
+    "is_hr_target": false
+  },
+  "kcorr_gallant-lion-73_sim90_snap37.npy": {
+    "run": "kcorr gallant-lion-73",
+    "model_type": "kcorr",
+    "sim_id": 90,
+    "snap_idx": 37,
+    "a": 0.7795918583869934,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 2.843592882156372,
+    "std": 0.40772104263305664,
+    "is_hr_target": false
+  },
+  "kcorr_gallant-lion-73_sim90_snap49.npy": {
+    "run": "kcorr gallant-lion-73",
+    "model_type": "kcorr",
+    "sim_id": 90,
+    "snap_idx": 49,
+    "a": 1.0,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 2.924363851547241,
+    "std": 0.4265836179256439,
+    "is_hr_target": false
+  },
+  "cnn_lemon-cloud-74_sim90_snap00.npy": {
+    "run": "cnn lemon-cloud-74",
+    "model_type": "cnn",
+    "sim_id": 90,
+    "snap_idx": 0,
+    "a": 0.10000000149011612,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 1.7697796821594238,
+    "std": 0.3624962866306305,
+    "is_hr_target": false
+  },
+  "cnn_lemon-cloud-74_sim90_snap12.npy": {
+    "run": "cnn lemon-cloud-74",
+    "model_type": "cnn",
+    "sim_id": 90,
+    "snap_idx": 12,
+    "a": 0.3204081654548645,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 2.0273971557617188,
+    "std": 0.32776159048080444,
+    "is_hr_target": false
+  },
+  "cnn_lemon-cloud-74_sim90_snap24.npy": {
+    "run": "cnn lemon-cloud-74",
+    "model_type": "cnn",
+    "sim_id": 90,
+    "snap_idx": 24,
+    "a": 0.5408163070678711,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 2.5590577125549316,
+    "std": 0.35059353709220886,
+    "is_hr_target": false
+  },
+  "cnn_lemon-cloud-74_sim90_snap37.npy": {
+    "run": "cnn lemon-cloud-74",
+    "model_type": "cnn",
+    "sim_id": 90,
+    "snap_idx": 37,
+    "a": 0.7795918583869934,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 2.840580701828003,
+    "std": 0.37704434990882874,
+    "is_hr_target": false
+  },
+  "cnn_lemon-cloud-74_sim90_snap49.npy": {
+    "run": "cnn lemon-cloud-74",
+    "model_type": "cnn",
+    "sim_id": 90,
+    "snap_idx": 49,
+    "a": 1.0,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 2.8560454845428467,
+    "std": 0.39300158619880676,
+    "is_hr_target": false
+  },
+  "cnn_revived-grass-60_sim90_snap00.npy": {
+    "run": "cnn revived-grass-60",
+    "model_type": "cnn",
+    "sim_id": 90,
+    "snap_idx": 0,
+    "a": 0.10000000149011612,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 1.7697796821594238,
+    "std": 0.3624962866306305,
+    "is_hr_target": false
+  },
+  "cnn_revived-grass-60_sim90_snap12.npy": {
+    "run": "cnn revived-grass-60",
+    "model_type": "cnn",
+    "sim_id": 90,
+    "snap_idx": 12,
+    "a": 0.3204081654548645,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 2.3516757488250732,
+    "std": 0.3476511836051941,
+    "is_hr_target": false
+  },
+  "cnn_revived-grass-60_sim90_snap24.npy": {
+    "run": "cnn revived-grass-60",
+    "model_type": "cnn",
+    "sim_id": 90,
+    "snap_idx": 24,
+    "a": 0.5408163070678711,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 2.839578866958618,
+    "std": 0.4041042625904083,
+    "is_hr_target": false
+  },
+  "cnn_revived-grass-60_sim90_snap37.npy": {
+    "run": "cnn revived-grass-60",
+    "model_type": "cnn",
+    "sim_id": 90,
+    "snap_idx": 37,
+    "a": 0.7795918583869934,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 2.980126142501831,
+    "std": 0.44971179962158203,
+    "is_hr_target": false
+  },
+  "cnn_revived-grass-60_sim90_snap49.npy": {
+    "run": "cnn revived-grass-60",
+    "model_type": "cnn",
+    "sim_id": 90,
+    "snap_idx": 49,
+    "a": 1.0,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 3.0900001525878906,
+    "std": 0.47432100772857666,
+    "is_hr_target": false
+  },
+  "kcorr_royal-energy-58_sim90_snap00.npy": {
+    "run": "kcorr royal-energy-58",
+    "model_type": "kcorr",
+    "sim_id": 90,
+    "snap_idx": 0,
+    "a": 0.10000000149011612,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 1.7697796821594238,
+    "std": 0.3624962866306305,
+    "is_hr_target": false
+  },
+  "kcorr_royal-energy-58_sim90_snap12.npy": {
+    "run": "kcorr royal-energy-58",
+    "model_type": "kcorr",
+    "sim_id": 90,
+    "snap_idx": 12,
+    "a": 0.3204081654548645,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 2.3177359104156494,
+    "std": 0.3467028737068176,
+    "is_hr_target": false
+  },
+  "kcorr_royal-energy-58_sim90_snap24.npy": {
+    "run": "kcorr royal-energy-58",
+    "model_type": "kcorr",
+    "sim_id": 90,
+    "snap_idx": 24,
+    "a": 0.5408163070678711,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 2.912080764770508,
+    "std": 0.40241411328315735,
+    "is_hr_target": false
+  },
+  "kcorr_royal-energy-58_sim90_snap37.npy": {
+    "run": "kcorr royal-energy-58",
+    "model_type": "kcorr",
+    "sim_id": 90,
+    "snap_idx": 37,
+    "a": 0.7795918583869934,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 2.9787847995758057,
+    "std": 0.4478982388973236,
+    "is_hr_target": false
+  },
+  "kcorr_royal-energy-58_sim90_snap49.npy": {
+    "run": "kcorr royal-energy-58",
+    "model_type": "kcorr",
+    "sim_id": 90,
+    "snap_idx": 49,
+    "a": 1.0,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 3.118393898010254,
+    "std": 0.4727587401866913,
+    "is_hr_target": false
+  },
+  "cnn_volcanic-plasma-59_sim90_snap00.npy": {
+    "run": "cnn volcanic-plasma-59",
+    "model_type": "cnn",
+    "sim_id": 90,
+    "snap_idx": 0,
+    "a": 0.10000000149011612,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 1.7697796821594238,
+    "std": 0.3624962866306305,
+    "is_hr_target": false
+  },
+  "cnn_volcanic-plasma-59_sim90_snap12.npy": {
+    "run": "cnn volcanic-plasma-59",
+    "model_type": "cnn",
+    "sim_id": 90,
+    "snap_idx": 12,
+    "a": 0.3204081654548645,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 2.339686393737793,
+    "std": 0.3475656807422638,
+    "is_hr_target": false
+  },
+  "cnn_volcanic-plasma-59_sim90_snap24.npy": {
+    "run": "cnn volcanic-plasma-59",
+    "model_type": "cnn",
+    "sim_id": 90,
+    "snap_idx": 24,
+    "a": 0.5408163070678711,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 2.831357002258301,
+    "std": 0.40402093529701233,
+    "is_hr_target": false
+  },
+  "cnn_volcanic-plasma-59_sim90_snap37.npy": {
+    "run": "cnn volcanic-plasma-59",
+    "model_type": "cnn",
+    "sim_id": 90,
+    "snap_idx": 37,
+    "a": 0.7795918583869934,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 2.9832074642181396,
+    "std": 0.44964712858200073,
+    "is_hr_target": false
+  },
+  "cnn_volcanic-plasma-59_sim90_snap49.npy": {
+    "run": "cnn volcanic-plasma-59",
+    "model_type": "cnn",
+    "sim_id": 90,
+    "snap_idx": 49,
+    "a": 1.0,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 3.098764419555664,
+    "std": 0.47438350319862366,
+    "is_hr_target": false
+  },
+  "cnn_young-field-77_sim90_snap00.npy": {
+    "run": "cnn young-field-77",
+    "model_type": "cnn",
+    "sim_id": 90,
+    "snap_idx": 0,
+    "a": 0.10000000149011612,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 1.7697796821594238,
+    "std": 0.3624962866306305,
+    "is_hr_target": false
+  },
+  "cnn_young-field-77_sim90_snap12.npy": {
+    "run": "cnn young-field-77",
+    "model_type": "cnn",
+    "sim_id": 90,
+    "snap_idx": 12,
+    "a": 0.3204081654548645,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 2.339965343475342,
+    "std": 0.34756359457969666,
+    "is_hr_target": false
+  },
+  "cnn_young-field-77_sim90_snap24.npy": {
+    "run": "cnn young-field-77",
+    "model_type": "cnn",
+    "sim_id": 90,
+    "snap_idx": 24,
+    "a": 0.5408163070678711,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 2.8313076496124268,
+    "std": 0.40402737259864807,
+    "is_hr_target": false
+  },
+  "cnn_young-field-77_sim90_snap37.npy": {
+    "run": "cnn young-field-77",
+    "model_type": "cnn",
+    "sim_id": 90,
+    "snap_idx": 37,
+    "a": 0.7795918583869934,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 2.983370780944824,
+    "std": 0.44965362548828125,
+    "is_hr_target": false
+  },
+  "cnn_young-field-77_sim90_snap49.npy": {
+    "run": "cnn young-field-77",
+    "model_type": "cnn",
+    "sim_id": 90,
+    "snap_idx": 49,
+    "a": 1.0,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 3.0988850593566895,
+    "std": 0.47438475489616394,
+    "is_hr_target": false
+  },
+  "cnn_glorious-wood-80_sim90_snap00.npy": {
+    "run": "cnn glorious-wood-80",
+    "model_type": "cnn",
+    "sim_id": 90,
+    "snap_idx": 0,
+    "a": 0.10000000149011612,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 1.7697796821594238,
+    "std": 0.3624962866306305,
+    "is_hr_target": false
+  },
+  "cnn_glorious-wood-80_sim90_snap12.npy": {
+    "run": "cnn glorious-wood-80",
+    "model_type": "cnn",
+    "sim_id": 90,
+    "snap_idx": 12,
+    "a": 0.3204081654548645,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 2.333190441131592,
+    "std": 0.34736716747283936,
+    "is_hr_target": false
+  },
+  "cnn_glorious-wood-80_sim90_snap24.npy": {
+    "run": "cnn glorious-wood-80",
+    "model_type": "cnn",
+    "sim_id": 90,
+    "snap_idx": 24,
+    "a": 0.5408163070678711,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 2.8380165100097656,
+    "std": 0.4025290012359619,
+    "is_hr_target": false
+  },
+  "cnn_glorious-wood-80_sim90_snap37.npy": {
+    "run": "cnn glorious-wood-80",
+    "model_type": "cnn",
+    "sim_id": 90,
+    "snap_idx": 37,
+    "a": 0.7795918583869934,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 2.9277331829071045,
+    "std": 0.4480668306350708,
+    "is_hr_target": false
+  },
+  "cnn_glorious-wood-80_sim90_snap49.npy": {
+    "run": "cnn glorious-wood-80",
+    "model_type": "cnn",
+    "sim_id": 90,
+    "snap_idx": 49,
+    "a": 1.0,
+    "src_mesh": 128,
+    "dst_mesh": 256,
+    "slab_thickness": 16,
+    "z0_frac": 0.5,
+    "shape": [
+      256,
+      256
+    ],
+    "vmin": 0.0,
+    "vmax": 3.0596914291381836,
+    "std": 0.4723360240459442,
+    "is_hr_target": false
+  }
+}
