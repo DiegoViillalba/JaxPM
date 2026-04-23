@@ -53,6 +53,36 @@ def get_corrected_potential_fn(model, params, grid_data, a):
     return get_corrected_potential
 
 
+def get_patched_transformer_force(
+    kvec, delta_k, positions, velocities, delta, model, params, a, r_split=0
+):
+    """Force from the PatchedTransformerModel.
+
+    The model returns ΔΦ[N,1] for ALL particles at once.  Because the model
+    uses stop_gradient on particle positions inside the transformer context,
+    ∂ΔΦ_i/∂pos_j = 0 for i≠j, so
+
+        jax.grad(lambda pos: sum(model(pos)[:,0]))(positions)
+
+    equals [∂ΔΦ_i/∂pos_i for each i] in a single backward pass.
+    """
+    pm_force, pm_pot = potential_kgrid_to_force_at_pos(
+        delta_k=delta_k,
+        kvec=kvec,
+        positions=positions,
+        r_split=r_split,
+        return_potential=True,
+    )
+    grid_data = jnp.stack([pm_pot, delta], axis=-1)
+    vel_sg    = jax.lax.stop_gradient(velocities)
+
+    def phi_sum(pos):
+        return jnp.sum(model.apply(params, grid_data, pos, a, vel_sg)[:, 0])
+
+    pm_force += jax.grad(phi_sum)(positions)
+    return pm_force
+
+
 def get_cnn_force(
     kvec, delta_k, positions, velocities, delta, model, params, a, r_split=0
 ):
@@ -107,6 +137,18 @@ def pm_forces(
         )
     elif add_correction == "cnn":
         return get_cnn_force(
+            kvec=kvec,
+            delta_k=delta_k,
+            positions=positions,
+            velocities=velocities,
+            delta=delta,
+            model=model,
+            params=params,
+            a=a,
+            r_split=r_split,
+        )
+    elif add_correction == "patched_transformer":
+        return get_patched_transformer_force(
             kvec=kvec,
             delta_k=delta_k,
             positions=positions,

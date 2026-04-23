@@ -1,0 +1,123 @@
+_wandb:
+    value:
+        cli_version: 0.25.0
+        e:
+            kbi00hsw0aplxuxofii2k17hw4ncj9w4:
+                args:
+                    - --config
+                    - configs/patched_transformer.yaml
+                codePath: pm2nbody/train_refactored_new.py
+                codePathLocal: pm2nbody/train_refactored_new.py
+                cpu_count: 192
+                cpu_count_logical: 192
+                cudaVersion: "13.0"
+                disk:
+                    /:
+                        total: "972240457728"
+                        used: "175542403072"
+                email: villalbagonzalezdiegoantonio@gmail.com
+                executable: /cosmos_storage/home/diegovillalba/JaxPM/.venv/bin/python
+                git:
+                    commit: b95e16a90e97b95d8b62c44207bdf24ee3bfcc2a
+                    remote: git@github.com:DiegoViillalba/JaxPM.git
+                gpu: NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition
+                gpu_count: 1
+                gpu_nvidia:
+                    - architecture: Blackwell
+                      cudaCores: 24064
+                      memoryTotal: "102641958912"
+                      name: NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition
+                      uuid: GPU-86664913-d38d-6dd8-b5b4-160e965dcee0
+                host: cosmos-node.sw.ehu.es
+                memory:
+                    total: "3245931581440"
+                os: Linux-5.14.0-611.30.1.el9_7.x86_64-x86_64-with-glibc2.34
+                program: /cosmos_storage/home/diegovillalba/JaxPM/pm2nbody/train_refactored_new.py
+                python: CPython 3.11.14
+                root: /cosmos_storage/home/diegovillalba/JaxPM/models
+                startedAt: "2026-04-22T21:21:49.665766Z"
+                writerId: kbi00hsw0aplxuxofii2k17hw4ncj9w4
+        m: []
+        python_version: 3.11.14
+        t:
+            "1":
+                - 12
+                - 45
+            "2":
+                - 12
+                - 45
+            "3":
+                - 16
+                - 61
+            "4": 3.11.14
+            "5": 0.25.0
+            "12": 0.25.0
+            "13": linux-x86_64
+correction_model:
+    value:
+        D_embed: 16
+        D_hidden: 32
+        D_trans: 8
+        K: 64
+        add_particle_velocities: true
+        channels_hidden_dim: 16
+        embed_globals: false
+        global_conditioning: add
+        globals_embedding_dim: 64
+        grid_size: 128
+        input_dim: 1
+        kernel_size: 3
+        latent_size: 64
+        n_convolutions: 3
+        n_fully_connected: 2
+        n_globals_embedding: 1
+        n_knots: 16
+        n_mlp_layers: 2
+        pad_periodic: true
+        patch_size: 8
+        type: patched_transformer
+        use_attention_interpolation: false
+        wst_J: 3
+        wst_L: 4
+data:
+    value:
+        box_size: 256
+        mesh_hr: 256
+        mesh_lr: 128
+        n_particles: 128
+        n_snapshots: 50
+        n_test_sims: 1
+        n_train_sims: 1
+        n_val_sims: 1
+        snapshots: null
+training:
+    value:
+        batch_size: 1
+        checkpoint_every: 5
+        fractional_mse: false
+        lambda_cross_corr: 0
+        lambda_density: 0
+        lambda_pk: 0
+        lambda_pos: 1
+        lambda_velocity: 0
+        log_pos: false
+        loss: mse_positions
+        max_idx: 49
+        n_steps: 200
+        patience: 25
+        sample_snapshots: false
+        schedule:
+            factor: 0.5
+            initial_lr: 0
+            min_lr: 1e-05
+            n_steps: 180
+            patience: 8
+            peak_value: 0.0003
+            type: cosine
+            warmup_steps: 10
+        seed: 0
+        weight_decay: 0.0001
+        weight_snapshots: true
+wandb:
+    value:
+        project: pm2nbody

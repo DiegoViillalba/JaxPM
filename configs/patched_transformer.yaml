@@ -1,0 +1,61 @@
+data:
+  mesh_lr: 128
+  mesh_hr: 256
+  n_train_sims: 1
+  n_val_sims: 1
+  n_test_sims: 1
+  box_size: 256.0
+  n_snapshots: 50
+  n_particles: 128
+
+correction_model:
+  type: patched_transformer
+
+  # WST hyper-parameters
+  wst_J: 3           # scales  (3 × 4 = 12 Morlet channels)
+  wst_L: 4           # orientations
+
+  # Patch geometry
+  patch_size: 8      # 8³-cell patches → 16³ = 4096 patches
+  K: 64              # max particles gathered per patch
+
+  # Transformer dimensions
+  D_embed: 16        # token embedding / residual stream width
+  D_hidden: 32       # attention Q/K/V projection width
+  D_trans: 8         # painted feature channels → grid
+
+  # Final MLP
+  n_mlp_layers: 2    # hidden layers before the scalar output
+
+  # Grid size (must match data.mesh_lr)
+  grid_size: 128
+
+training:
+  seed: 0
+  n_steps: 200
+  batch_size: 1
+  patience: 25
+  checkpoint_every: 5
+  loss: mse_positions
+  weight_snapshots: true
+  lambda_pos: 1.0
+  lambda_velocity: 0.0
+  lambda_density: 0.0
+  lambda_pk: 0.0        # keep 0 — compile hangs with pk loss
+  lambda_cross_corr: 0.0
+  log_pos: false
+  fractional_mse: false
+  weight_decay: 1.0e-4
+  max_idx: 49
+  schedule:
+    type: cosine
+    initial_lr: 0.0
+    peak_value: 3.0e-4
+    warmup_steps: 10
+    n_steps: 180
+    factor: 0.5
+    patience: 8
+    min_lr: 1.0e-5
+
+wandb:
+  project: pm2nbody

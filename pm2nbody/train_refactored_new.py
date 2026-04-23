@@ -47,6 +47,7 @@ from jaxpm.nn import CNN, NeuralSplineFourierFilter
 from jaxpm.painting import compensate_cic
 from jaxpm.utils import power_spectrum
 from jaxpm.pm import get_delta
+from jaxpm.patched_transformer import make_patched_transformer
 
 from read_data import load_datasets
 from loss import (
@@ -275,6 +276,20 @@ def build_network(config):
 
         return hk.without_apply_rng(hk.transform(CNNWSTCorr))
 
+    elif config.type == "patched_transformer":
+        logger.info("Using Patched Lagrangian Transformer correction model.")
+        return make_patched_transformer(
+            J=getattr(config, "wst_J", 3),
+            L=getattr(config, "wst_L", 4),
+            patch_size=getattr(config, "patch_size", 8),
+            K=getattr(config, "K", 64),
+            D_embed=getattr(config, "D_embed", 16),
+            D_hidden=getattr(config, "D_hidden", 32),
+            D_trans=getattr(config, "D_trans", 8),
+            n_mlp_layers=getattr(config, "n_mlp_layers", 2),
+            grid_size=getattr(config, "grid_size", 128),
+        )
+
     else:
         raise NotImplementedError(f"Unknown correction model type: {config.type}")
 
@@ -290,15 +305,13 @@ def initialize_network(data_sample, neural_net, seed: int = 42, model_type: str 
 
     if model_type == "kcorr":
         return neural_net.init(rng, grid_init, scale_init)
-    elif model_type in ("cnn", "cnn_force"):
-        return neural_net.init(rng, grid_init, pos_init, scale_init, vel_init)
     elif model_type == "cnn+kcorr":
         return {
             "kcorr": neural_net["kcorr"].init(rng, grid_init, scale_init),
             "cnn":   neural_net["cnn"].init(rng, grid_init, pos_init, scale_init, None),
         }
-    elif model_type in ("cnn", "cnn_force", "cnn_wst"):
-      return neural_net.init(rng, grid_init, pos_init, scale_init, vel_init)
+    elif model_type in ("cnn", "cnn_force", "cnn_wst", "patched_transformer"):
+        return neural_net.init(rng, grid_init, pos_init, scale_init, vel_init)
     else:
         raise NotImplementedError(f"Unknown model type: {model_type}")
 
@@ -311,7 +324,8 @@ def build_loss_fn(training_config, neural_net, cosmology, correction_type, mesh_
     
     logger.info(f"Building loss: {training_config.loss} | correction: {correction_type}")
 
-    correction_type = "cnn"
+    # Map patched_transformer to the pm.py add_correction string
+    # (all other types already match their pm.py dispatch key)
 
 
     if training_config.loss == "mse_frozen_potential":
