@@ -164,10 +164,25 @@ def build_model_from_config(cm: dict):
             grid_size=cm.get("grid_size", 128),
         )
 
+    elif model_type == "hybrid_transformer":
+        from jaxpm.patched_transformer import make_hybrid_transformer
+        return make_hybrid_transformer(
+            J=cm.get("wst_J", 3),
+            L=cm.get("wst_L", 4),
+            patch_size=cm.get("patch_size", 8),
+            K=cm.get("K", 64),
+            D_embed=cm.get("D_embed", 16),
+            D_hidden=cm.get("D_hidden", 32),
+            D_trans=cm.get("D_trans", 8),
+            n_mlp_layers=cm.get("n_mlp_layers", 2),
+            grid_size=cm.get("grid_size", 128),
+            combine_mode=cm.get("combine_mode", "sum"),
+        )
+
     else:
         raise ValueError(
             f"Tipo de modelo desconocido: {model_type!r}. "
-            f"Tipos soportados: cnn, cnn_force, kcorr, cnn+kcorr, cnn_wst, patched_transformer"
+            f"Tipos soportados: cnn, cnn_force, kcorr, cnn+kcorr, cnn_wst, patched_transformer, hybrid_transformer"
         )
 
 

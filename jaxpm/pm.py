@@ -147,7 +147,9 @@ def pm_forces(
             a=a,
             r_split=r_split,
         )
-    elif add_correction == "patched_transformer":
+    elif add_correction in ("patched_transformer", "hybrid_transformer"):
+        # Both model types share the same force interface:
+        # model.apply(params, grid_data, positions, a, velocities) → ΔΦ [N,1]
         return get_patched_transformer_force(
             kvec=kvec,
             delta_k=delta_k,

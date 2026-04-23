@@ -1,0 +1,71 @@
+data:
+  mesh_lr: 128
+  mesh_hr: 256
+  n_train_sims: 40
+  n_val_sims: 1
+  n_test_sims: 1
+  box_size: 256.0
+  n_snapshots: 50
+  n_particles: 128
+
+correction_model:
+  type: hybrid_transformer
+
+  # ── Eulerian branch ───────────────────────────────────────────────────────
+  # WST enriches the input grid before the CIC read at particle positions.
+  wst_J: 3           # scales  → 3×4 = 12 Morlet channels
+  wst_L: 4           # orientations
+
+  # ── Lagrangian branch (velocity-aware patched attention) ──────────────────
+  # Particles are sorted into PS³-cell patches; up to K are gathered per patch.
+  patch_size: 8      # 8³-cell patches → 16³ = 4096 patches on a 128³ mesh
+  K: 64              # max particles per patch (padded when fewer)
+
+  # ── Transformer dimensions ────────────────────────────────────────────────
+  D_embed: 16        # token residual stream width
+  D_hidden: 32       # Q/K/V projection width for single-head attention
+  D_trans: 8         # channels painted back to the Lagrangian feature grid
+
+  # ── MLP (shared hidden width = D_embed) ──────────────────────────────────
+  n_mlp_layers: 2    # hidden layers before the scalar output in each branch
+
+  # ── Combination mode ──────────────────────────────────────────────────────
+  # "sum"    — ΔΦ = MLP_E(f_Eulerian) + MLP_L(f_Lagrangian)
+  #             Two independent scalar potentials. The Lagrangian branch can
+  #             be initialised near zero so training starts as a pure
+  #             Eulerian correction and gradually learns Lagrangian terms.
+  # "concat" — ΔΦ = MLP([f_Eulerian, f_Lagrangian, vel, a])
+  #             Single expressive MLP; allows cross-branch feature interactions.
+  combine_mode: "sum"
+
+  grid_size: 128     # must match data.mesh_lr
+
+training:
+  seed: 0
+  n_steps: 200
+  batch_size: 1
+  patience: 25
+  checkpoint_every: 5
+  loss: mse_positions
+  weight_snapshots: true
+  lambda_pos: 1.0
+  lambda_velocity: 0.0
+  lambda_density: 0.0
+  lambda_pk: 0.0        # keep 0 — compile hangs with pk loss
+  lambda_cross_corr: 0.0
+  log_pos: false
+  fractional_mse: false
+  weight_decay: 1.0e-4
+  max_idx: 49
+  schedule:
+    type: cosine
+    initial_lr: 0.0
+    peak_value: 3.0e-4
+    warmup_steps: 10
+    n_steps: 180
+    factor: 0.5
+    patience: 8
+    min_lr: 1.0e-4
+
+wandb:
+  project: pm2nbody

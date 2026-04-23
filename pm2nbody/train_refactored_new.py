@@ -47,7 +47,7 @@ from jaxpm.nn import CNN, NeuralSplineFourierFilter
 from jaxpm.painting import compensate_cic
 from jaxpm.utils import power_spectrum
 from jaxpm.pm import get_delta
-from jaxpm.patched_transformer import make_patched_transformer
+from jaxpm.patched_transformer import make_patched_transformer, make_hybrid_transformer
 
 from read_data import load_datasets
 from loss import (
@@ -290,6 +290,21 @@ def build_network(config):
             grid_size=getattr(config, "grid_size", 128),
         )
 
+    elif config.type == "hybrid_transformer":
+        logger.info("Using Hybrid Eulerian+Lagrangian Transformer correction model.")
+        return make_hybrid_transformer(
+            J=getattr(config, "wst_J", 3),
+            L=getattr(config, "wst_L", 4),
+            patch_size=getattr(config, "patch_size", 8),
+            K=getattr(config, "K", 64),
+            D_embed=getattr(config, "D_embed", 16),
+            D_hidden=getattr(config, "D_hidden", 32),
+            D_trans=getattr(config, "D_trans", 8),
+            n_mlp_layers=getattr(config, "n_mlp_layers", 2),
+            grid_size=getattr(config, "grid_size", 128),
+            combine_mode=getattr(config, "combine_mode", "sum"),
+        )
+
     else:
         raise NotImplementedError(f"Unknown correction model type: {config.type}")
 
@@ -310,7 +325,7 @@ def initialize_network(data_sample, neural_net, seed: int = 42, model_type: str 
             "kcorr": neural_net["kcorr"].init(rng, grid_init, scale_init),
             "cnn":   neural_net["cnn"].init(rng, grid_init, pos_init, scale_init, None),
         }
-    elif model_type in ("cnn", "cnn_force", "cnn_wst", "patched_transformer"):
+    elif model_type in ("cnn", "cnn_force", "cnn_wst", "patched_transformer", "hybrid_transformer"):
         return neural_net.init(rng, grid_init, pos_init, scale_init, vel_init)
     else:
         raise NotImplementedError(f"Unknown model type: {model_type}")
