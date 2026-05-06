@@ -1,0 +1,102 @@
+_wandb:
+    value:
+        cli_version: 0.25.0
+        e:
+            v5fijiom4k2jv0pd2tm0v91yaw6l8563:
+                args:
+                    - --config
+                    - configs/lag_force_cnn_wst.yaml
+                codePath: pm2nbody/train_lag_force.py
+                codePathLocal: pm2nbody/train_lag_force.py
+                cpu_count: 192
+                cpu_count_logical: 192
+                cudaVersion: "13.0"
+                disk:
+                    /:
+                        total: "972240457728"
+                        used: "172449562624"
+                email: villalbagonzalezdiegoantonio@gmail.com
+                executable: /cosmos_storage/home/diegovillalba/JaxPM/.venv/bin/python
+                git:
+                    commit: 84aed1b21a43e47d1cd047319a87063c364cac89
+                    remote: git@github.com:DiegoViillalba/JaxPM.git
+                gpu: NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition
+                gpu_count: 1
+                gpu_nvidia:
+                    - architecture: Blackwell
+                      cudaCores: 24064
+                      memoryTotal: "102641958912"
+                      name: NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition
+                      uuid: GPU-86664913-d38d-6dd8-b5b4-160e965dcee0
+                host: cosmos-node.sw.ehu.es
+                memory:
+                    total: "3245931581440"
+                os: Linux-5.14.0-611.30.1.el9_7.x86_64-x86_64-with-glibc2.34
+                program: /cosmos_storage/home/diegovillalba/JaxPM/pm2nbody/train_lag_force.py
+                python: CPython 3.11.14
+                root: /cosmos_storage/home/diegovillalba/JaxPM
+                startedAt: "2026-04-29T23:23:31.474841Z"
+                writerId: v5fijiom4k2jv0pd2tm0v91yaw6l8563
+        m: []
+        python_version: 3.11.14
+        t:
+            "1":
+                - 12
+                - 45
+            "2":
+                - 12
+                - 45
+            "3":
+                - 13
+                - 15
+                - 16
+            "4": 3.11.14
+            "5": 0.25.0
+            "12": 0.25.0
+            "13": linux-x86_64
+data:
+    value:
+        box_size: 256
+        data_dir: /cosmos_storage/home/diegovillalba/JaxPM/data/lagrangian_matched_128_256_L256.0_S50_Np128
+        mesh_hr: 256
+        mesh_lr: 128
+        n_particles: 128
+        sim_id_train: 0
+        sim_id_val: 1
+        snap_train: 24
+        snaps_val:
+            - 9
+            - 24
+            - 39
+experiment:
+    value:
+        name: lag_force_cnn_wst_residual
+        output_dir: runs/lag_force
+model:
+    value:
+        cnn_checkpoint: /cosmos_storage/home/diegovillalba/JaxPM/models/electric-dream-78/
+        hidden_dim: 64
+        n_layers: 3
+        output_mode: force
+        type: lag_force_mlp
+        use_invariants: true
+        use_scale_factor: true
+        use_strain: true
+        use_velocity: true
+training:
+    value:
+        log_every: 50
+        lr: 0.0001
+        n_steps: 1000
+        save_every: 200
+        seed: 0
+        warmup_steps: 50
+        weight_decay: 0.0001
+wandb:
+    value:
+        project: pm2nbody_lag_force
+        tags:
+            - lag_force
+            - mlp
+            - cnn_wst_residual
+            - single_snapshot

@@ -1,7 +1,7 @@
 data:
   mesh_lr: 128
   mesh_hr: 256
-  n_train_sims: 1
+  n_train_sims: 40
   n_val_sims: 1
   n_test_sims: 1
   box_size: 256.0
@@ -55,7 +55,7 @@ training:
     n_steps: 180
     factor: 0.5
     patience: 8
-    min_lr: 1.0e-5
+    min_lr: 1.0e-4
 
 wandb:
   project: pm2nbody

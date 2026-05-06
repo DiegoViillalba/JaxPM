@@ -145,7 +145,7 @@ if __name__ == "__main__":
     snapshots = jnp.linspace(0.1, 1.0, n_snapshots)
     L = 256.0
     out_dir /= (
-        f"matched_{mesh_lr}_{mesh_hr}_L{L:.1f}_S{n_snapshots}_Np{n_particles_sqrt_3}"
+        f"lagrangian_matched_{mesh_lr}_{mesh_hr}_L{L:.1f}_S{n_snapshots}_Np{n_particles_sqrt_3}"
     )
     out_dir.mkdir(exist_ok=True, parents=True)
     mesh_shape_hr = (mesh_hr, mesh_hr, mesh_hr)
@@ -154,7 +154,7 @@ if __name__ == "__main__":
     omega_c = 0.25
     sigma8 = 0.8
     ics_seed = 0
-    n_sims = 100
+    n_sims = 2
     for n in range(n_sims):
         # Generate density field ICs
         print("*" * 10)
