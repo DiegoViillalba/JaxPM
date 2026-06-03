@@ -1,0 +1,73 @@
+# ==============================================================================
+# cnn_forceres.yaml
+# CNN-WST force-resolution correction (stage 1).
+#
+# Same architecture as cnn_massres.yaml.  Difference:
+#   - Single simulation (no LR/HR particle pair)
+#   - Target: ΔF = F_fine(mesh_hr) − F_coarse(mesh_lr)  — same N³ particles
+#   - Data loaded from generate_data_single.py output
+#
+# Pipeline:
+#   Stage 1:  python train_cnn_forceres.py --config configs/cnn_forceres.yaml
+#   Stage 2:  python train_subregion_forceres.py --config configs/subregion_forceres.yaml
+#             (set model.cnn_checkpoint: runs/cnn_forceres/<run>/checkpoint.pkl)
+# ==============================================================================
+
+experiment:
+  name: cnn_forceres
+  output_dir: runs/cnn_forceres
+
+data:
+  data_dir: /cosmos_storage/home/diegovillalba/data_single_test
+  n_part:   64                # particles per dimension (n_part³ total)
+  mesh_lr:  32                # coarse PM mesh  (corrects force at this resolution)
+  mesh_hr:  64                # fine   PM mesh  (= n_part; target accuracy)
+  box_size: 128.0             # Mpc/h
+
+  sim_id_train: 0
+  sim_id_val:   1
+  snap_train:   5             # a ≈ 0.6
+  snaps_val:  [2, 5, 8]
+
+model:
+  type: cnn_wst               # "cnn" (fast) or "cnn_wst" (better with WST features)
+
+  # CNN architecture  (same as cnn_massres)
+  channels_hidden_dim: 32
+  n_convolutions:       4
+  n_fully_connected:    2
+  kernel_size:          3
+  pad_periodic:      true
+  embed_globals:     true
+  n_globals_embedding:  2
+  globals_embedding_dim: 8
+  global_conditioning: null
+  use_attention_interpolation: false
+  add_particle_velocities:     false
+
+  # WST settings
+  wst_J: 2
+  wst_L: 4
+
+  # input_dim: must match C from build_grid_data
+  #   use_pm_potential=true  → C=2  → input_dim=2
+  #   use_pm_potential=false → C=1  → input_dim=1
+  input_dim: 2
+  use_pm_potential: true
+
+training:
+  seed: 0
+  n_steps: 3000
+  lr: 1.0e-4
+  weight_decay: 1.0e-4
+  warmup_steps: 100
+  log_every:    50
+  save_every:  500
+
+  loss_sc_boost:      3.0
+  loss_density_boost: 1.0
+  loss_density_gamma: 0.5
+
+wandb:
+  project: pm2nbody_cnn_forceres
+  tags: [cnn_wst, forceres, stage1]

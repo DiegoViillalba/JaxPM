@@ -58,6 +58,11 @@ from train_lag_force import (
     compute_sample_weights, # per-particle loss weights
     compute_metrics,        # Pearson R, frac_mse, etc.
 )
+# ── Optional CNN stage-1 prior ─────────────────────────────────────────────────
+from train_lag_massres import (
+    _load_cnn_massres_checkpoint,       # loads checkpoint saved by train_cnn_forceres.py
+    compute_cnn_massres_correction,     # ∇ΔΦ_CNN evaluated at positions (mesh_lr units)
+)
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
@@ -142,26 +147,55 @@ def make_patch_split(
 # 3. Validation
 # ==============================================================================
 
-def eval_region(model, params, feats, vel, a, target, region_idx, prefix):
-    """Compute metrics for a given subset of particles."""
+def eval_region(
+    model, params, feats, vel, a, delta_f_full,
+    region_idx, prefix,
+    cnn_pred_all=None,
+):
+    """
+    Compute metrics for a given subset of particles.
+
+    Parameters
+    ----------
+    delta_f_full : [N, 3]   full ΔF target (F_fine − F_coarse) for ALL particles
+    cnn_pred_all : [N, 3]   CNN stage-1 prediction for ALL particles (or None)
+                            When provided, the MLP is evaluated against the residual
+                            target, and total (CNN + MLP) metrics are also logged.
+    """
     feats_r  = feats[region_idx]
     vel_r    = vel[region_idx]
-    target_r = target[region_idx]
-    pred_r   = jax.device_get(model.apply(params, feats_r, vel_r, jnp.array(a)))
-    pred_r   = np.asarray(pred_r)
-    tgt_r    = np.asarray(jax.device_get(target_r))
+    delta_f_r = np.asarray(jax.device_get(delta_f_full[region_idx]))
 
-    mse     = float(np.mean((pred_r - tgt_r) ** 2))
-    r_vals  = [pearsonr(pred_r[:, c], tgt_r[:, c])[0] for c in range(3)]
-    r_mean  = float(np.mean(r_vals))
-    frac_sq = float(np.mean(
-        np.sum((pred_r - tgt_r)**2, axis=1) / (np.sum(tgt_r**2, axis=1) + 1e-12)
+    # MLP target: residual if two-stage, full ΔF otherwise
+    if cnn_pred_all is not None:
+        cnn_r = np.asarray(cnn_pred_all[region_idx])
+        target_r = delta_f_r - cnn_r
+    else:
+        cnn_r = np.zeros_like(delta_f_r)
+        target_r = delta_f_r
+
+    mlp_pred_r = np.asarray(jax.device_get(
+        model.apply(params, feats_r, vel_r, jnp.array(a))
     ))
-    return {
-        f"{prefix}mse":      mse,
-        f"{prefix}pearson_r": r_mean,
-        f"{prefix}frac_mse": frac_sq,
-    }
+    total_pred_r = cnn_r + mlp_pred_r       # CNN + MLP combined
+
+    def _metrics(pred, tgt, tag):
+        mse    = float(np.mean((pred - tgt) ** 2))
+        r_mean = float(np.mean([pearsonr(pred[:, c], tgt[:, c])[0] for c in range(3)]))
+        fmse   = float(np.mean(
+            np.sum((pred - tgt)**2, axis=1) / (np.sum(tgt**2, axis=1) + 1e-12)
+        ))
+        return {f"{tag}mse": mse, f"{tag}pearson_r": r_mean, f"{tag}frac_mse": fmse}
+
+    out = {}
+    # MLP-only metrics (vs residual target)
+    out.update(_metrics(mlp_pred_r, target_r, prefix))
+    # Total correction vs full ΔF (the physically meaningful metric)
+    out.update(_metrics(total_pred_r, delta_f_r, f"{prefix}total_"))
+    # CNN-only metrics (fixed, not training)
+    if cnn_pred_all is not None:
+        out.update(_metrics(cnn_r, delta_f_r, f"{prefix}cnn_"))
+    return out
 
 
 # ==============================================================================
@@ -206,6 +240,7 @@ def train(config_path: str):
     env_pool_mode  = str(getattr(model_cfg,  "env_pool_mode",  "mean_var"))
     hidden_dim     = int(getattr(model_cfg,  "hidden_dim",     64))
     n_layers       = int(getattr(model_cfg,  "n_layers",       3))
+    cnn_ckpt_path  = getattr(model_cfg, "cnn_checkpoint", None)
 
     n_steps      = int(getattr(train_cfg,   "n_steps",       2000))
     lr_val       = float(getattr(train_cfg,  "lr",            3e-4))
@@ -250,6 +285,7 @@ def train(config_path: str):
     logger.info(f"  a_train={a_tr:.4f}  N={pos_tr.shape[0]:,}")
 
     # ── Lagrangian features (all particles — needed for test evaluation) ──────
+    # pos_tr is in n_part units; snapshot_features uses mesh_size=n_part → consistent
     logger.info("Computing Lagrangian features …")
     feats_all, det_D_all = snapshot_features(
         pos_tr, neighbor_idx, n_part,
@@ -261,31 +297,87 @@ def train(config_path: str):
     logger.info(f"  feat_dim={feat_dim}  SC={sc_frac:.2%}")
 
     # ── Force pair (coarse + fine, same particles) ────────────────────────────
-    logger.info("Computing force pair (coarse→fine, same particles) …")
+    # UNIT FIX: compute_force_pair expects positions in mesh_lr units.
+    # load_single_snapshot returns pos in n_part units.
+    # Convert: pos_lr = pos * (mesh_lr / n_part)
+    scale_to_lr = float(mesh_lr) / float(n_part)
+    pos_tr_lr   = pos_tr * scale_to_lr    # [N, 3]  in mesh_lr units
+
+    logger.info(f"Computing force pair  mesh_lr={mesh_lr} vs mesh_hr={mesh_hr} …")
+    logger.info(f"  pos unit conversion: n_part={n_part} → mesh_lr={mesh_lr}  (×{scale_to_lr:.3f})")
     _force_pair_jit = jax.jit(partial(compute_force_pair, mesh_lr=mesh_lr, mesh_hr=mesh_hr))
-    f_coarse, f_fine, delta_f = _force_pair_jit(pos_tr)
+    f_coarse, f_fine, delta_f = _force_pair_jit(pos_tr_lr)
     df_mag = float(jnp.mean(jnp.sqrt(jnp.sum(delta_f**2, axis=-1))))
     f_mag  = float(jnp.mean(jnp.sqrt(jnp.sum(f_fine**2,  axis=-1))))
     logger.info(f"  |F_fine| mean = {f_mag:.4e}   |ΔF| mean = {df_mag:.4e}  "
                 f"({df_mag/f_mag:.1%} of F_fine)")
 
+    # ── Optional CNN prior (stage 1) ──────────────────────────────────────────
+    # If cnn_checkpoint is set, the CNN predicts ΔF_CNN from the LR density grid.
+    # The MLP then learns only the residual: ΔF_mlp = ΔF − ΔF_CNN
+    # Total correction: ΔF_total = ΔF_CNN + ΔF_MLP
+    cnn_model, cnn_params = None, None
+    IS_TWO_STAGE = cnn_ckpt_path is not None
+    cnn_pred_all_np = np.zeros_like(np.asarray(delta_f))   # zero placeholder
+
+    if IS_TWO_STAGE:
+        logger.info(f"Loading CNN checkpoint: {cnn_ckpt_path}")
+        cnn_model, cnn_params = _load_cnn_massres_checkpoint(cnn_ckpt_path)
+        n_cnn = sum(x.size for x in jax.tree_util.tree_leaves(cnn_params))
+        logger.info(f"  CNN loaded  ({n_cnn:,} params)")
+
+        # CNN correction requires positions in mesh_lr units (same as force pair)
+        vel_feat_all = vel_tr if use_velocity else jnp.zeros_like(vel_tr)
+        # Scale velocity to mesh_lr units too
+        vel_lr_all = vel_feat_all * scale_to_lr
+
+        _cnn_jit = jax.jit(
+            lambda pos, vel, a: compute_cnn_massres_correction(
+                cnn_model, cnn_params, pos, vel, a, mesh_lr
+            )
+        )
+        cnn_pred_all_np = np.asarray(jax.device_get(
+            _cnn_jit(pos_tr_lr, vel_lr_all, jnp.array(a_tr))
+        ))
+
+        cnn_r_vals = [pearsonr(cnn_pred_all_np[:, c],
+                               np.asarray(delta_f[:, c]))[0] for c in range(3)]
+        cnn_r      = float(np.mean(cnn_r_vals))
+        residual_mag = float(np.mean(np.sqrt(np.sum(
+            (np.asarray(delta_f) - cnn_pred_all_np)**2, axis=-1
+        ))))
+        logger.info(f"  CNN R_mean={cnn_r:.4f}  |ΔF_CNN|={np.mean(np.sqrt(np.sum(cnn_pred_all_np**2,axis=-1))):.4e}")
+        logger.info(f"  Residual |ΔF − ΔF_CNN|={residual_mag:.4e}  "
+                    f"(was {df_mag:.4e} → {residual_mag/df_mag:.1%} remaining)")
+    else:
+        logger.info("Single-stage: MLP trains on full ΔF  (no CNN checkpoint)")
+
     # ── Sample weights (train region only) ────────────────────────────────────
+    # NOTE: compute_sample_weights expects positions in mesh_lr units → use pos_tr_lr
     weights_all = compute_sample_weights(
-        pos_tr, det_D_all, n_part,
+        pos_tr_lr, det_D_all, mesh_lr,
         sc_boost=loss_sc_boost,
         density_boost=loss_dens_boost,
         density_gamma=loss_dens_gamma,
     )
 
-    # ── Slice to training region ──────────────────────────────────────────────
-    feats_tr   = feats_all[train_idx]
-    vel_feat_tr = vel_tr[train_idx] if use_velocity else jnp.zeros((len(train_idx), 3))
-    target_tr  = delta_f[train_idx]
-    weights_tr = weights_all[train_idx]
+    # ── MLP target: residual if two-stage, full ΔF otherwise ─────────────────
+    delta_f_mlp_target = (
+        delta_f - jnp.array(cnn_pred_all_np)
+        if IS_TWO_STAGE else delta_f
+    )
+    stage_label = "F_corrected = F_lr + ΔF_CNN + ΔF_MLP" if IS_TWO_STAGE else "F_corrected = F_lr + ΔF_MLP"
+    logger.info(f"Pipeline: {stage_label}")
 
-    logger.info(f"Train region  |ΔF| mean = "
+    # ── Slice to training region ──────────────────────────────────────────────
+    feats_tr    = feats_all[train_idx]
+    vel_feat_tr = vel_tr[train_idx] if use_velocity else jnp.zeros((len(train_idx), 3))
+    target_tr   = delta_f_mlp_target[train_idx]
+    weights_tr  = weights_all[train_idx]
+
+    logger.info(f"Train region  MLP target |ΔF_mlp| mean = "
                 f"{float(jnp.mean(jnp.sqrt(jnp.sum(target_tr**2, axis=-1)))):.4e}")
-    logger.info(f"Test  region  |ΔF| mean = "
+    logger.info(f"Test  region  full  |ΔF|  mean = "
                 f"{float(jnp.mean(jnp.sqrt(jnp.sum(delta_f[test_idx]**2, axis=-1)))):.4e}")
 
     # ── Model ─────────────────────────────────────────────────────────────────
@@ -300,6 +392,12 @@ def train(config_path: str):
     rng    = jax.random.PRNGKey(seed)
     params = lag_model.init(rng, feats_tr[:4], vel_feat_tr[:4], jnp.array(a_tr))
     opt_state = optimizer.init(params)
+    wandb.log({"model/is_two_stage": int(IS_TWO_STAGE)}, step=0)
+    if IS_TWO_STAGE:
+        wandb.log({"cnn/pearson_r_train": float(np.mean(
+            [pearsonr(cnn_pred_all_np[train_idx, c],
+                      np.asarray(delta_f[train_idx, c]))[0] for c in range(3)]
+        ))}, step=0)
 
     n_params = sum(x.size for x in jax.tree_util.tree_leaves(params))
     logger.info(f"MLP: {n_params:,} params  feat_dim={feat_dim}  "
@@ -320,28 +418,41 @@ def train(config_path: str):
         if step % log_every == 0 or step == n_steps - 1:
             log = {"step": step, "train/loss": float(loss)}
 
+            vel_eval = vel_tr if use_velocity else jnp.zeros_like(vel_tr)
+
             # ── Train region metrics ───────────────────────────────────────
-            tm = eval_region(lag_model, params, feats_all, vel_tr if use_velocity
-                             else jnp.zeros_like(vel_tr), a_tr, delta_f,
-                             train_idx, "train/")
+            tm = eval_region(lag_model, params, feats_all, vel_eval, a_tr,
+                             delta_f, train_idx, "train/",
+                             cnn_pred_all=cnn_pred_all_np if IS_TWO_STAGE else None)
             log.update(tm)
 
-            # ── Test region metrics (generalisation) ──────────────────────
-            vm = eval_region(lag_model, params, feats_all, vel_tr if use_velocity
-                             else jnp.zeros_like(vel_tr), a_tr, delta_f,
-                             test_idx, "test/")
+            # ── Test region metrics (generalisation key metric) ────────────
+            vm = eval_region(lag_model, params, feats_all, vel_eval, a_tr,
+                             delta_f, test_idx, "test/",
+                             cnn_pred_all=cnn_pred_all_np if IS_TWO_STAGE else None)
             log.update(vm)
+
+            # Key generalisation metrics for WandB dashboard
+            # Use total_ (CNN+MLP vs full ΔF) if two-stage, else MLP vs ΔF
+            r_key = "total_pearson_r" if IS_TWO_STAGE else "pearson_r"
+            train_r = tm[f"train/{r_key}"]
+            test_r  = vm[f"test/{r_key}"]
+            log["generalisation/train_R"] = train_r
+            log["generalisation/test_R"]  = test_r
+            log["generalisation/gap"]     = train_r - test_r
 
             wandb.log(log, step=step)
             logger.info(
                 f"step {step:5d} | loss={float(loss):.3e} | "
-                f"train R={tm['train/pearson_r']:.3f}  "
-                f"test R={vm['test/pearson_r']:.3f}  "
-                f"(gap={tm['train/pearson_r'] - vm['test/pearson_r']:+.3f})"
+                f"train R={train_r:.3f}  "
+                f"test R={test_r:.3f}  "
+                f"(gap={train_r - test_r:+.3f})"
             )
 
-            if vm["test/mse"] < best_test_mse:
-                best_test_mse = vm["test/mse"]
+            # Save best by test-region total MSE
+            mse_key = "total_mse" if IS_TWO_STAGE else "mse"
+            if vm[f"test/{mse_key}"] < best_test_mse:
+                best_test_mse = vm[f"test/{mse_key}"]
                 best_params   = hk.data_structures.to_mutable_dict(params)
                 with open(out_dir / "best_params.pkl", "wb") as fh:
                     pickle.dump(best_params, fh)

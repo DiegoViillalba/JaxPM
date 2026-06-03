@@ -45,6 +45,13 @@ model:
   hidden_dim:     64
   n_layers:        3
 
+  # Optional CNN stage-1 prior (output of train_cnn_forceres.py).
+  # When set, MLP trains on the residual: ΔF_mlp = ΔF − ΔF_CNN.
+  # Total:  F_corrected = F_coarse + ΔF_CNN + ΔF_MLP
+  # To activate: replace null with the path to checkpoint.pkl
+  # cnn_checkpoint: /cosmos_storage/home/diegovillalba/runs/cnn_forceres/<run>/checkpoint.pkl
+  cnn_checkpoint: null
+
 training:
   seed:            0
   n_steps:      2000
