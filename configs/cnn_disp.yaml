@@ -1,0 +1,76 @@
+# ==============================================================================
+# cnn_disp.yaml
+# CNN-WST displacement field super-resolution.
+#
+# Pipeline:
+#   ΔΨ_CNN = ∇ΔΦ_CNN(x_LR)          scalar potential → gradient
+#
+# Use as stage 1 before the Lagrangian MLP:
+#   1. python train_cnn_disp.py  --config configs/cnn_disp.yaml
+#   2. Paste the checkpoint path into lag_disp_mlp.yaml → model.cnn_checkpoint
+#   3. python train_lag_disp.py  --config configs/lag_disp_mlp.yaml
+#      (MLP will learn residual ΔΨ − ΔΨ_CNN)
+# ==============================================================================
+
+experiment:
+  name: cnn_disp
+  output_dir: runs/cnn_disp
+
+data:
+  data_dir: ../data_disp_test      # ← change to your actual path
+  mesh_lr:     64
+  mesh_hr:    128
+  box_size:   128.0                 # Mpc/h
+  n_particles: 64                   # LR particles per dimension (64³ total)
+
+  sim_id_train: 0
+  sim_id_val:   1
+  snap_train:   5                   # a ≈ 0.6
+  snaps_val:  [2, 5, 8]
+
+model:
+  type: cnn_wst                     # "cnn" (fast) or "cnn_wst" (better)
+
+  # CNN architecture
+  channels_hidden_dim: 32
+  n_convolutions:       4
+  n_fully_connected:    2
+  kernel_size:          3
+  pad_periodic:      true
+  embed_globals:     true
+  n_globals_embedding:  2
+  globals_embedding_dim: 8
+  global_conditioning: null
+  use_attention_interpolation: false
+  add_particle_velocities:     false
+
+  # WST settings (only used for cnn_wst)
+  wst_J: 2                          # scales: 2 good starting point
+  wst_L: 4                          # orientations
+
+  # input_dim — must match C in build_grid_data:
+  #   use_pm_potential=true  → C=2  → input_dim=2  (for CNN)
+  #   use_pm_potential=false → C=1  → input_dim=1
+  # For cnn_wst the actual input_dim is computed dynamically (C + J*L)
+  input_dim: 2
+
+  # Use PM potential as additional grid channel (recommended: true)
+  use_pm_potential: true
+
+training:
+  seed: 0
+  n_steps: 2000
+  lr: 1.0e-4
+  weight_decay: 1.0e-4
+  warmup_steps: 100
+  log_every:    50
+  save_every:  500
+
+  # Per-particle loss weighting
+  loss_sc_boost:      3.0           # up-weight shell-crossing particles
+  loss_density_boost: 1.0
+  loss_density_gamma: 0.5
+
+wandb:
+  project: pm2nbody_cnn_disp
+  tags: [cnn_wst, displacement, stage1]

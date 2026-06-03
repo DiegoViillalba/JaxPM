@@ -1,0 +1,81 @@
+# ==============================================================================
+# lag_disp_mlp.yaml
+# Standalone Lagrangian MLP experiment — displacement field super-resolution.
+#
+# Target:  ΔΨ_i = Ψ_HR(q_i) − Ψ_LR_i
+#
+#   Ψ_LR_i    = x_LR_i  − q_i           displacement of LR particle from IC
+#   Ψ_HR(q_i) = x_HR_j  − q_i           HR displacement sampled at same Lagrangian q
+#              (j = HR particle with the same Lagrangian index as i)
+#
+# After applying: x_corrected = x_LR + ΔΨ_pred ≈ x_HR(q)
+#
+# The model predicts this correction from the LOCAL DEFORMATION TENSOR
+# E = D − I, capturing information invisible in the Eulerian density field:
+#   det(D) < 0  →  shell-crossing (multi-streaming)
+#   eigenvalues  →  anisotropic collapse (filaments, sheets, halos)
+#
+# Key assumptions
+# ---------------
+#   - HR particles are stored in Lagrangian C-order
+#   - n_particles = mesh_lr  (standard: 128³ particles on 128³ mesh)
+#   - HR n_particles = mesh_hr  (256³ particles on 256³ mesh)
+# ==============================================================================
+
+experiment:
+  name: lag_disp_mlp
+  output_dir: runs/lag_disp
+
+data:
+  data_dir: ../data
+  mesh_lr: 128
+  mesh_hr: 256
+  box_size: 256.0             # Mpc/h
+  n_particles: 128            # LR particles per dimension (128³ total)
+
+  sim_id_train: 0
+  sim_id_val: 1
+  snap_train: 24              # a ≈ 0.5
+  snaps_val: [9, 24, 39]
+
+model:
+  type: lag_disp_mlp
+  hidden_dim: 64
+  n_layers: 3
+  use_strain: true
+  use_invariants: false       # set true if MLP plateaus — adds tr(D), det(D), ||E||_F
+  use_velocity: true          # particle velocity as additional feature
+
+  # ── Extended neighbourhood ────────────────────────────────────────────────
+  # n_shell=0 → only deformation tensor D (9 features)
+  # n_shell=1 → add 26 neighbours → non-linear env residuals (+6 features)
+  n_shell: 1
+  env_pool_mode: "mean_var"
+
+  # Pre-trained CNN-WST checkpoint to subtract its displacement correction first.
+  # Leave null for standalone mode (MLP predicts full ΔΨ directly).
+  cnn_checkpoint: null
+
+training:
+  seed: 0
+  n_steps: 1000
+  lr: 3.0e-4
+  weight_decay: 1.0e-4
+  warmup_steps: 50
+  log_every: 50
+  save_every: 200
+
+  # ── Per-particle loss weighting ─────────────────────────────────────────
+  # Shell-crossing and high-density regions are where LR→HR position
+  # corrections are largest and most physically meaningful.
+  #
+  # Formula (normalised to mean=1):
+  #   w_i = [1 + (sc_boost−1)·𝟙[det D_i < 0]]
+  #         · (1 + density_boost · max(δ_i, 0))^density_gamma
+  loss_sc_boost:      5.0
+  loss_density_boost: 2.0
+  loss_density_gamma: 0.5
+
+wandb:
+  project: pm2nbody_lag_disp
+  tags: [lag_disp, mlp, standalone, weighted_loss]

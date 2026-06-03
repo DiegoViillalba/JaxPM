@@ -1,0 +1,84 @@
+# ==============================================================================
+# subregion_force.yaml
+# CNN+MLP sub-region force prediction.
+#
+# Task:
+#   Given the global LR simulation + HR particle positions in a spatial patch,
+#   predict the PM force correction for HR particles in that patch:
+#
+#     F_total = F_LR@HR + ΔF_CNN + ΔF_MLP
+#
+# Pipeline:
+#   Stage 0 (data):    python generate_data_subregion.py --mode test
+#   Stage 1 (CNN):     python train_cnn_massres.py --config configs/cnn_massres.yaml
+#   Stage 2 (MLP):     python train_subregion_force.py --config configs/subregion_force.yaml
+#                      (set model.cnn_checkpoint to activate CNN prior)
+#
+# Key difference from mass-res pipeline:
+#   • Force pair evaluated at ALL HR positions (no stride-subsampling)
+#   • Lagrangian features at HR resolution (mesh_hr grid)
+#   • Training uses random spatial patches (patch_n³ particles per step)
+# ==============================================================================
+
+experiment:
+  name: null                        # null = use wandb run name
+  output_dir: runs/subregion_force
+
+data:
+  data_dir: ../data_subregion_test  # ← output of generate_data_subregion.py
+  mesh_lr:     64
+  mesh_hr:    128
+  box_size:   128.0                 # Mpc/h
+  n_particles: 64                   # LR particles per dimension
+
+  # Gaussian smoothing for HR force target (in LR-cell units).
+  # Must match the value used in generate_data_subregion.py (--sigma_hr).
+  # 0.5 → σ = r×0.5 = 1 HR cell for r=2  (removes HR Nyquist noise)
+  smooth_sigma_hr: 0.5
+
+  sim_id_train: 0
+  sim_id_val:   1
+  snap_train:   5                   # training snapshot index
+  snaps_val:  [2, 5, 8]            # validation snapshot indices
+
+model:
+  # HR Lagrangian feature extraction
+  use_strain:     true              # deformation tensor eigenvalues
+  use_invariants: false             # use invariants instead of eigenvalues
+  use_velocity:   false             # include HR particle velocities
+  n_shell:        0                 # shell neighbourhood size (0 = axis-only)
+                                    # note: n_shell > 0 is expensive for mesh_hr=128
+  env_pool_mode:  mean_var
+
+  # MLP architecture (same as lag_massres)
+  hidden_dim: 64
+  n_layers:    3
+
+  # CNN prior (stage-1 checkpoint from train_cnn_massres.py).
+  # Uncomment to activate two-stage training:
+  # cnn_checkpoint: runs/cnn_massres/<run>/checkpoint.pkl
+
+  use_pm_potential: true             # include PM potential channel in CNN input
+
+training:
+  seed:         0
+  n_steps:   5000
+  lr:        3.0e-4
+  weight_decay: 1.0e-4
+  warmup_steps:  100
+  log_every:     100
+  save_every:    500
+
+  # Patch-based training parameters
+  patch_n:          32              # patch side length (32³ = 32,768 HR particles)
+  patches_per_snap: 16             # inner patch steps per loaded snapshot (reserved)
+  n_val_patches:     8             # patches used for validation metrics
+
+  # Per-particle loss weighting
+  loss_sc_boost:      1.0          # up-weight shell-crossing particles
+  loss_density_boost: 0.0
+  loss_density_gamma: 0.5
+
+wandb:
+  project: pm2nbody_subregion
+  tags: [mlp, lagrangian, subregion, zoom, force]

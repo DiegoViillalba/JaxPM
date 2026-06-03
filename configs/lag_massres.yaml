@@ -1,0 +1,83 @@
+# ==============================================================================
+# lag_massres.yaml
+# Lagrangian MLP for mass-resolution force correction.
+#
+# Target:
+#   ΔF_mass_i = F_HR(q_i) − F_LR_i        [stage 1 alone]
+#   or
+#   ΔF_residual_i = ΔF_mass_i − ΔF_CNN_i  [stage 2 with CNN prior]
+#
+# Features per particle:
+#   • Deformation tensor eigenvalues / strain invariants (Lagrangian)
+#   • Extended shell neighbourhood statistics  (n_shell > 0)
+#   • Velocity components at snapshot time
+#   • Scale factor a
+#
+# Two-stage workflow:
+#   Stage 1:  python train_cnn_massres.py --config configs/cnn_massres.yaml
+#   Stage 2:  python train_lag_massres.py --config configs/lag_massres.yaml
+#
+# To activate stage 2 (MLP learns residual ΔF − ΔF_CNN), uncomment and fill:
+#     model:
+#       cnn_checkpoint: runs/cnn_massres/<run>/checkpoint.pkl
+# ==============================================================================
+
+experiment:
+  name: lag_massres
+  output_dir: runs/lag_massres
+
+data:
+  data_dir: ../data_disp_test      # ← path to your simulation data
+  mesh_lr:     64                  # LR mesh size
+  mesh_hr:    128                  # HR mesh size (= n_particles_hr)
+  box_size:   128.0                # Mpc/h
+  n_particles: 64                  # LR particles per dimension (64³ total)
+
+  # ── Gaussian smoothing for force pair (both sigmas in LR-cell units) ──────
+  # Keep consistent with the CNN stage-1 config (cnn_massres.yaml).
+  # Both forces are computed on the shared mesh_hr PM mesh (same force resolution).
+  # smooth_sigma_lr: smooth LR density — leave at 0 (preserve "as-simulated" LR force)
+  # smooth_sigma_hr: smooth HR density to reduce shot noise in target
+  #   0.5 → σ = r×0.5 = 1 HR cell (for r=2), removes Nyquist noise
+  #   1.0 → σ = r×1.0 = 2 HR cells = 1 LR cell, stronger suppression
+  smooth_sigma_lr: 0.0
+  smooth_sigma_hr: 0.5             # keep in sync with cnn_massres.yaml
+
+  sim_id_train: 0
+  sim_id_val:   1
+  snap_train:   5                  # training snapshot index
+  snaps_val:  [2, 5, 8]           # validation snapshot indices
+
+model:
+  # Lagrangian feature extraction
+  use_strain:     true             # include strain tensor eigenvalues
+  use_invariants: false            # use tensor invariants instead of eigenvalues
+  use_velocity:   true             # append velocity to per-particle features
+  n_shell:        1                # extended neighbourhood shells (0 = axis-only)
+  env_pool_mode:  mean_var         # "mean_var" | "mean" | "max"
+
+  # MLP architecture
+  hidden_dim: 64
+  n_layers:    3
+
+  # Optional CNN prior (stage-1 checkpoint from train_cnn_massres.py)
+  # Uncomment to activate two-stage training:
+  # cnn_checkpoint: runs/cnn_massres/<run>/checkpoint.pkl
+
+training:
+  seed: 0
+  n_steps: 2000
+  lr: 3.0e-4
+  weight_decay: 1.0e-4
+  warmup_steps:  50
+  log_every:     50
+  save_every:   200
+
+  # Per-particle loss weighting
+  loss_sc_boost:      3.0          # up-weight shell-crossing particles
+  loss_density_boost: 0.0
+  loss_density_gamma: 0.5
+
+wandb:
+  project: pm2nbody_lag_massres
+  tags: [mlp, lagrangian, massres, force, stage2]

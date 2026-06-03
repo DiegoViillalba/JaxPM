@@ -1,0 +1,70 @@
+# ==============================================================================
+# subregion_forceres.yaml
+# Force-resolution correction trained on a spatial sub-region.
+#
+# Concept:
+#   Single simulation, N³ particles.
+#   Coarse force: PM on mesh_lr  (standard simulation force)
+#   Fine force:   PM on mesh_hr  (more accurate, same particles)
+#   ΔF = F_fine − F_coarse  (target)
+#
+#   Training:  particles in a Lagrangian sub-region (train_patch_n³ cube)
+#   Test:      the remaining particles
+#
+#   Key metric: train_R vs test_R — does the model generalise?
+#
+# Data:
+#   python generate_data_single.py --mode test
+#   (or use LR output from generate_data_disp.py)
+#
+# Usage:
+#   python train_subregion_forceres.py --config configs/subregion_forceres.yaml
+# ==============================================================================
+
+experiment:
+  name: null
+  output_dir: runs/subregion_forceres
+
+data:
+  data_dir: ../data_single_test    # ← output of generate_data_single.py
+  n_part:    64                    # particles per dimension (= mesh_hr)
+  mesh_lr:   32                    # coarse force mesh  (n_part / 2)
+  mesh_hr:   64                    # fine force mesh    (= n_part)
+  box_size:  128.0                 # Mpc/h
+  sim_id_train: 0
+  sim_id_val:   1
+  snap_train:   5
+  snaps_val:  [2, 5, 8]
+
+model:
+  use_strain:     true
+  use_invariants: false
+  use_velocity:   true
+  n_shell:        0
+  env_pool_mode:  mean_var
+  hidden_dim:     64
+  n_layers:        3
+
+training:
+  seed:            0
+  n_steps:      2000
+  lr:           3.0e-4
+  weight_decay: 1.0e-4
+  warmup_steps:   50
+  log_every:      50
+  save_every:    200
+
+  # Sub-region split
+  # train_patch_n³ particles used for training, rest for testing.
+  # Example: n_part=64, train_patch_n=32 → 32³/64³ = 12.5% for training
+  train_patch_n:  32    # side of the training Lagrangian cube
+  patch_seed:     42    # random seed for patch origin
+
+  # Per-particle loss weighting
+  loss_sc_boost:      1.0
+  loss_density_boost: 0.0
+  loss_density_gamma: 0.5
+
+wandb:
+  project: pm2nbody_subregion_forceres
+  tags: [mlp, lagrangian, subregion, force, generalisation]

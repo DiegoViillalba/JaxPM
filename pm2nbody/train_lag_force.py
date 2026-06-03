@@ -347,11 +347,33 @@ def make_train_step(model, optimizer):
 # 5. Feature + det_D helper (avoids repeated recompute)
 # ==============================================================================
 
-def snapshot_features(pos_t, neighbor_idx, mesh_lr, use_strain, use_invariants):
-    """Compute (feats [N, D], det_D [N]) for a single snapshot."""
+def snapshot_features(
+    pos_t,
+    neighbor_idx,
+    mesh_lr,
+    use_strain,
+    use_invariants,
+    ext_neighbor_idx=None,
+    ext_offsets=None,
+    pool_mode: str = "mean_var",
+    shell_slices: tuple = (),
+):
+    """
+    Compute (feats [N, D], det_D [N]) for a single snapshot.
+
+    Extended neighbourhood arguments (ext_neighbor_idx, ext_offsets, pool_mode,
+    shell_slices) are forwarded to compute_deformation_features when provided.
+    They are used by the displacement SR pipeline (train_lag_disp.py) to add
+    non-linear environment residuals as additional features.
+    """
+    # static_argnums covers: mesh_lr(2), use_strain(3), use_invariants(4),
+    # pool_mode(7), shell_slices(8)
     feats = jax.jit(
-        compute_deformation_features, static_argnums=(2, 3, 4)
-    )(pos_t, neighbor_idx, mesh_lr, use_strain, use_invariants)
+        compute_deformation_features, static_argnums=(2, 3, 4, 7, 8)
+    )(
+        pos_t, neighbor_idx, mesh_lr, use_strain, use_invariants,
+        ext_neighbor_idx, ext_offsets, pool_mode, shell_slices,
+    )
 
     neg_idx = neighbor_idx[:, [1, 3, 5]]
     _, det_D = jax.jit(
