@@ -130,3 +130,21 @@ dmypy.json
 
 *.npy
 *.npz
+
+# Training outputs — never track these
+runs/
+wandb/
+*.pkl
+*.npy
+__pycache__/
+*.pyc
+.keys/
+
+# Training outputs — never track these
+runs/
+wandb/
+*.pkl
+*.npy
+__pycache__/
+*.pyc
+.keys/
