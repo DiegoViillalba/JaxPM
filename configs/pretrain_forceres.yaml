@@ -1,0 +1,78 @@
+# ==============================================================================
+# pretrain_forceres.yaml
+# Multi-simulation MLP pre-training for force-resolution correction.
+#
+# Goal: train the Lagrangian MLP on ALL particles from multiple simulations
+# and snapshots so it generalises well before on-the-fly fine-tuning.
+#
+# Key difference from subregion_forceres.yaml:
+#   - sim_ids_train: list of sim IDs (not a single sim)
+#   - snaps_train:   list of snapshot indices (not a single snap)
+#   - ALL particles used for training (no patch split)
+#   - Each training step samples a random (sim, snap) pair
+#
+# Why this works:
+#   The region-size scan shows test R rises monotonically with training data.
+#   Multi-sim pre-training achieves the same diversity as an 80%+ single-sim
+#   patch at the same on-the-fly fine-tuning cost (12.5% patch unchanged).
+#
+# Pipeline:
+#   Step 1 (optional):  python train_cnn_forceres.py --config configs/cnn_forceres.yaml
+#   Step 2 (this):      python train_pretrain_forceres.py --config configs/pretrain_forceres.yaml
+#   Step 3 (on-the-fly): finetune_subregion_forceres.py  (coming soon)
+#
+# Usage:
+#   python train_pretrain_forceres.py --config configs/pretrain_forceres.yaml
+# ==============================================================================
+
+experiment:
+  name: null
+  output_dir: runs/pretrain_forceres
+
+data:
+  data_dir: /cosmos_storage/home/diegovillalba/data_single_test
+  n_part:   64
+  mesh_lr:  32
+  mesh_hr:  64
+  box_size: 128.0
+
+  # Training: all listed (sim, snap) pairs → each step picks one at random
+  sim_ids_train: [0]          # add more when you generate more sims: [0, 1, 2, 3, 4]
+  snaps_train:   [2, 5, 8]    # early (a=0.3), mid (a=0.6), late (a=0.9)
+
+  # Validation: held-out simulation (sim 1 from test preset)
+  sim_ids_val: [1]
+  snaps_val:   [2, 5, 8]
+
+model:
+  use_strain:     true
+  use_invariants: false
+  use_velocity:   true
+  n_shell:        0
+  env_pool_mode:  mean_var
+  hidden_dim:     64
+  n_layers:        3
+
+  # CNN stage-1 prior (output of train_cnn_forceres.py).
+  # MLP trains on the residual: ΔF_mlp = ΔF − ΔF_CNN
+  # Set to null for single-stage (MLP trains on full ΔF).
+  # cnn_checkpoint: /cosmos_storage/home/diegovillalba/JaxPM/runs/cnn_forceres/cnn_forceres/checkpoint.pkl
+  cnn_checkpoint: null
+
+training:
+  seed:          0
+  n_steps:    5000       # more steps because more data per epoch
+  lr:         3.0e-4
+  weight_decay: 1.0e-4
+  warmup_steps: 200      # longer warmup for multi-dataset stability
+  log_every:     50
+  save_every:   500
+
+  # Per-particle loss weighting
+  loss_sc_boost:      1.0
+  loss_density_boost: 0.0
+  loss_density_gamma: 0.5
+
+wandb:
+  project: pm2nbody_pretrain_forceres
+  tags: [mlp, lagrangian, pretrain, multisim, forceres]
