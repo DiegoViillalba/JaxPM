@@ -54,8 +54,8 @@ config.update("jax_enable_x64", True)
 # ==============================================================================
 
 NARYA_COSMO = dict(
-    Omega_c=0.36,
-    Omega_b=0.0,
+    Omega_c=0.31,   # = Omega_m(0.36) − Omega_b(0.05); Narya runs pure CDM but
+    Omega_b=0.05,   # jax_cosmo Eisenstein-Hu transfer fn divides by Omega_b → needs >0
     h=0.70,
     n_s=1.01,
     sigma8=0.78,   # derived from As=1.84444e-9 at Narya params
@@ -209,8 +209,9 @@ def generate(
     print(f"  Narya-cosmology data generation")
     print(f"  {n_part}³ = {n_particles:,} particles  |  L={box_size} Mpc/h")
     print(f"  {n_snapshots} snapshots  a=[{a_start:.2f},{a_end:.2f}]  |  {n_sims} sims")
-    print(f"  Cosmology: Ω_c={cosmo_params['Omega_c']}, h={cosmo_params['h']}, "
-          f"σ₈={cosmo_params['sigma8']}, n_s={cosmo_params['n_s']}")
+    omega_m = cosmo_params['Omega_c'] + cosmo_params['Omega_b']
+    print(f"  Cosmology: Ω_m={omega_m:.3f} (Ω_c={cosmo_params['Omega_c']}+Ω_b={cosmo_params['Omega_b']})"
+          f", h={cosmo_params['h']}, σ₈={cosmo_params['sigma8']}, n_s={cosmo_params['n_s']}")
     print(f"  ODE mode: {'sequential (memory-safe)' if seq_ode else 'batch (fast)'}")
     print(f"  Peak GPU mem/sim: {mem_per_snap_mb:.0f} MB/snap × "
           f"{'1 (seq)' if seq_ode else str(n_snapshots) + ' (batch)'} "
