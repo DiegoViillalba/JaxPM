@@ -35,6 +35,9 @@ Usage
 import os
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.85"
+# jax_cosmo enables float64 at import time; force float32 before any JAX import
+# so that FFTs and kernels stay in complex64 on GPUs without full float64 support.
+os.environ["JAX_ENABLE_X64"] = "0"
 
 import yaml
 import pickle

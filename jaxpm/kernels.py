@@ -34,15 +34,15 @@ def gradient_kernel(kvec, direction, order=1):
       Complex kernel
     """
     if order == 0:
-        wts = 1j * kvec[direction]
+        wts = np.complex64(1j) * kvec[direction]   # stay complex64
         wts = jnp.squeeze(wts)
         wts[len(wts) // 2] = 0
         wts = wts.reshape(kvec[direction].shape)
         return wts
     else:
         w = kvec[direction]
-        a = 1 / 6.0 * (8 * jnp.sin(w) - jnp.sin(2 * w))
-        wts = a * 1j
+        a = np.float32(1 / 6.0) * (8 * jnp.sin(w) - jnp.sin(2 * w))
+        wts = a * np.complex64(1j)   # stay complex64
         return wts
 
 
@@ -61,7 +61,7 @@ def laplace_kernel(kvec):
     kk = sum(ki**2 for ki in kvec)
     mask = (kk == 0).nonzero()
     kk[mask] = 1
-    wts = 1.0 / kk
+    wts = np.float32(1.0) / kk   # float32 literal avoids float64 promotion
     imask = (~(kk == 0)).astype(int)
     wts *= imask
     return wts
