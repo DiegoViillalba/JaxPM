@@ -1,0 +1,72 @@
+# ==============================================================================
+# multisim_cnn.yaml
+# CNN-WST stage-1 force-resolution correction — multi-epoch training.
+#
+# Cosmology: omega_c=0.25, sigma8=0.8 (Planck15 default)
+# Data:      generate_data_single.py --mode multisim
+#            n_part=128, mesh_lr=128, mesh_hr=256, L=256 Mpc/h, 6 sims, 10 snaps
+#
+# Key change vs cnn_forceres.yaml:
+#   - snaps_train: list → CNN sees multiple scale factors during training
+#   - sim_id_train: one sim (CNN is per-sim; MLP generalises across sims)
+#
+# Pipeline:
+#   Step 1: python generate_data_single.py --mode multisim \
+#             --out /cosmos_storage/home/diegovillalba/data_multisim128
+#   Step 2: python train_cnn_forceres.py --config configs/multisim_cnn.yaml
+#   Step 3: python train_pretrain_forceres.py --config configs/multisim_mlp.yaml
+# ==============================================================================
+
+experiment:
+  name: multisim_cnn
+  output_dir: runs/multisim_cnn
+
+data:
+  data_dir: /cosmos_storage/home/diegovillalba/data_multisim128
+  n_part:   128
+  mesh_lr:  128     # = N: Nyquist-matched PM
+  mesh_hr:  256     # = 2N: 2x oversampling, better halo forces
+  box_size: 256.0
+
+  sim_id_train: 0
+  sim_id_val:   5
+  snaps_train: [1, 3, 5, 7, 9]    # a ≈ 0.20, 0.40, 0.60, 0.80, 1.00
+  snaps_val:   [0, 2, 4, 6, 8]    # a ≈ 0.10, 0.30, 0.50, 0.70, 0.90
+
+model:
+  type: cnn_wst
+
+  channels_hidden_dim: 32
+  n_convolutions:       4
+  n_fully_connected:    2
+  kernel_size:          3
+  pad_periodic:      true
+  embed_globals:     true
+  n_globals_embedding:  2
+  globals_embedding_dim: 8
+  global_conditioning: null
+  use_attention_interpolation: false
+  add_particle_velocities:     false
+
+  wst_J: 2
+  wst_L: 4
+
+  input_dim: 2
+  use_pm_potential: true
+
+training:
+  seed: 0
+  n_steps: 5000
+  lr: 1.0e-4
+  weight_decay: 1.0e-4
+  warmup_steps: 200
+  log_every:     50
+  save_every:   500
+
+  loss_sc_boost:      3.0
+  loss_density_boost: 1.0
+  loss_density_gamma: 0.5
+
+wandb:
+  project: pm2nbody_multisim
+  tags: [cnn_wst, forceres, multisim, multiepoch]

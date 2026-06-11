@@ -22,14 +22,14 @@ from functools import partial
 import numpy as np
 import jax
 import jax.numpy as jnp
+import os
+os.environ["JAX_ENABLE_X64"] = "0"
+
 import jax_cosmo as jc
-from jax import config
 from jax.experimental.ode import odeint
 
 from jaxpm.pm import linear_field, lpt, make_ode_fn
 from jaxpm.kernels import fftk
-
-config.update("jax_enable_x64", True)
 
 
 # ==============================================================================
@@ -60,6 +60,8 @@ def run_simulation(n_mesh, omega_c, sigma8, ics, snapshots):
 PRESETS = {
     "test": dict(n_part=64,  box_size=128.0, n_snapshots=10, n_sims=2,
                  out_dir="./data_single_test"),
+    "multisim": dict(n_part=128, box_size=256.0, n_snapshots=10, n_sims=6,
+                     out_dir="./data_multisim128"),
     "medium": dict(n_part=128, box_size=256.0, n_snapshots=20, n_sims=4,
                    out_dir="./data_single_medium"),
     "full":   dict(n_part=256, box_size=512.0, n_snapshots=50, n_sims=10,
@@ -91,7 +93,7 @@ def generate(n_part, box_size, n_snapshots, n_sims, out_dir,
         print("  [1/3] Linear field + ICs …")
         lin = get_linear_field(mesh_shape, box, omega_c, sigma8, seed=n)
 
-        coords  = jnp.arange(n_part, dtype=jnp.float64)
+        coords  = jnp.arange(n_part, dtype=jnp.float32)
         ix, iy, iz = jnp.meshgrid(coords, coords, coords, indexing="ij")
         particles = jnp.stack([ix.ravel(), iy.ravel(), iz.ravel()], axis=-1)
         cosmo     = jc.Planck15(Omega_c=omega_c, sigma8=sigma8)
