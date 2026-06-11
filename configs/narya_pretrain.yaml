@@ -1,0 +1,69 @@
+# ==============================================================================
+# narya_pretrain.yaml
+# Multi-simulation MLP pre-training on Narya-cosmology data (L256N768 params).
+#
+# Cosmology: Omega_c=0.36, h=0.7, sigma8=0.78, ns=1.01, L=256 Mpc/h
+# Data generated with: python generate_data_narya.py --mode narya256 --n_sims 5
+#
+# Resolution upgrade over test pipeline:
+#   Test:  N=64,  mesh_lr=32,  mesh_hr=64,  L=128 Mpc/h → δF at 4 Mpc/h
+#   This:  N=256, mesh_lr=128, mesh_hr=256, L=256 Mpc/h → δF at 2→1 Mpc/h
+#
+# Pipeline:
+#   Step 1: python generate_data_narya.py --mode narya256 --n_sims 5
+#   Step 2: python train_cnn_forceres.py  --config configs/narya_cnn.yaml  (optional)
+#   Step 3: python train_pretrain_forceres.py --config configs/narya_pretrain.yaml
+#   Step 4: finetune_subregion_forceres.py  (on-the-fly, coming soon)
+#
+# Usage:
+#   python train_pretrain_forceres.py --config configs/narya_pretrain.yaml
+# ==============================================================================
+
+experiment:
+  name: null
+  output_dir: runs/narya_pretrain
+
+data:
+  data_dir: /cosmos_storage/home/diegovillalba/data_narya256
+  n_part:   256
+  mesh_lr:  128       # coarse force mesh   (N/2)
+  mesh_hr:  256       # fine   force mesh   (=N)
+  box_size: 256.0     # Mpc/h  (matches Narya L256N768)
+
+  # sim 4 held out for validation; sims 0-3 used for training
+  sim_ids_train: [0, 1, 2, 3]
+  snaps_train:   [2, 4, 7, 9]   # a ≈ 0.30, 0.50, 0.80, 1.00
+
+  sim_ids_val: [4]
+  snaps_val:   [2, 4, 7, 9]
+
+model:
+  use_strain:     true
+  use_invariants: false
+  use_velocity:   true
+  n_shell:        0
+  env_pool_mode:  mean_var
+  hidden_dim:     64
+  n_layers:        3
+
+  # Optional CNN stage-1 prior.
+  # To activate: set path to output of train_cnn_forceres.py with narya_cnn.yaml
+  # cnn_checkpoint: /cosmos_storage/home/diegovillalba/JaxPM/runs/narya_cnn/<run>/checkpoint.pkl
+  cnn_checkpoint: null
+
+training:
+  seed:          42
+  n_steps:    8000       # more steps: 4 sims × 4 snaps = 16 datasets
+  lr:         3.0e-4
+  weight_decay: 1.0e-4
+  warmup_steps: 500
+  log_every:    100
+  save_every:   500
+
+  loss_sc_boost:      1.0
+  loss_density_boost: 0.0
+  loss_density_gamma: 0.5
+
+wandb:
+  project: pm2nbody_narya_pretrain
+  tags: [mlp, lagrangian, pretrain, multisim, narya, L256, N256]
