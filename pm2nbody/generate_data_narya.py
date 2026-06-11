@@ -41,12 +41,12 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 import jax_cosmo as jc
-from jax import config
 from jax.experimental.ode import odeint
 
 from jaxpm.pm import linear_field, lpt, make_ode_fn
 
-config.update("jax_enable_x64", True)
+import os
+os.environ["JAX_ENABLE_X64"] = "0"
 
 
 # ==============================================================================
@@ -201,8 +201,8 @@ def generate(
     cosmo_obj  = make_cosmo(**cosmo_params)
 
     n_particles = n_part ** 3
-    # Peak GPU memory estimate per sim (positions only, float64)
-    mem_per_snap_mb = n_particles * 3 * 8 / 1e6
+    # Peak GPU memory estimate per sim (positions only, float32)
+    mem_per_snap_mb = n_particles * 3 * 4 / 1e6
     mem_batch_gb    = mem_per_snap_mb * n_snapshots / 1e3
 
     print(f"{'='*60}")
@@ -233,7 +233,7 @@ def generate(
         print("  [1/3] Linear field + 2LPT ICs …")
         lin = get_linear_field(mesh_shape, box, cosmo_params, seed=n)
 
-        coords    = jnp.arange(n_part, dtype=jnp.float64)
+        coords    = jnp.arange(n_part, dtype=jnp.float32)
         ix, iy, iz = jnp.meshgrid(coords, coords, coords, indexing="ij")
         particles = jnp.stack([ix.ravel(), iy.ravel(), iz.ravel()], axis=-1)
         dx, p, _  = lpt(cosmo_obj, lin, particles, snapshots[0])
