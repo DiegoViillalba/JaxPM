@@ -151,8 +151,10 @@ def train(config_path: str):
 
     sim_train  = int(getattr(data_cfg, "sim_id_train", 0))
     sim_val    = int(getattr(data_cfg, "sim_id_val",   1))
-    snap_train = int(data_cfg.snap_train)
-    snaps_val  = list(getattr(data_cfg, "snaps_val", [snap_train]))
+    # Accept either snap_train (int, backward compat) or snaps_train (list)
+    _s = getattr(data_cfg, "snaps_train", None) or getattr(data_cfg, "snap_train", 5)
+    snaps_train = [int(_s)] if isinstance(_s, (int, float)) else [int(x) for x in _s]
+    snaps_val   = list(getattr(data_cfg, "snaps_val", snaps_train[:1]))
 
     use_pm_potential = bool(getattr(model_cfg, "use_pm_potential", True))
     n_steps      = int(getattr(train_cfg, "n_steps",       2000))
@@ -178,52 +180,50 @@ def train(config_path: str):
     # ── Model ─────────────────────────────────────────────────────────────────
     model = build_cnn_model(model_cfg)
 
-    # ── Training snapshot ─────────────────────────────────────────────────────
-    logger.info(f"Loading sim={sim_train}  snap={snap_train}")
-    pos, vel, a_train = load_single_snapshot(
-        data_dir, sim_train, snap_train, n_part, box_size
-    )
-    pos_lr = pos * scale_to_lr    # mesh_lr units
-    logger.info(f"  a={a_train:.4f}  N={pos.shape[0]:,}")
-    logger.info(f"  pos_lr range: [{float(pos_lr.min()):.2f}, {float(pos_lr.max()):.2f}]")
-
-    # Grid input for CNN
-    pos_mod   = jnp.mod(pos_lr, mesh_lr)
-    grid_data = jax.jit(build_grid_data, static_argnums=(1, 2))(
-        pos_mod, mesh_lr, use_pm_potential
-    )
-    logger.info(f"  grid_data shape: {grid_data.shape}  C={grid_data.shape[-1]}")
-
-    # Force-resolution pair (same particles, two meshes)
-    logger.info("Computing force-resolution pair …")
+    # ── Precompute all training snapshots ─────────────────────────────────────
+    # Supports snaps_train as a list for temporal generalization.
+    # Each dataset stores (grid_data, pos_lr, delta_f, weights, a).
     _fp_jit = jax.jit(partial(compute_force_pair, mesh_lr=mesh_lr, mesh_hr=mesh_hr))
-    f_coarse, f_fine, delta_f = _fp_jit(pos_lr)
-    df_mag = float(jnp.mean(jnp.sqrt(jnp.sum(delta_f**2, axis=-1))))
-    f_mag  = float(jnp.mean(jnp.sqrt(jnp.sum(f_fine**2,  axis=-1))))
-    logger.info(f"  |F_fine|={f_mag:.4e}  |ΔF|={df_mag:.4e}  ratio={df_mag/f_mag:.3f}")
+    _gd_jit = jax.jit(build_grid_data, static_argnums=(1, 2))
 
-    # Per-particle weights
-    weights = compute_sample_weights(
-        pos_lr, np.ones(pos.shape[0], dtype=np.float32),   # det_D unused if sc_boost=1
-        mesh_lr,
-        sc_boost=loss_sc_boost,
-        density_boost=loss_dens_boost,
-        density_gamma=loss_dens_gamma,
-    )
-    weights_t = jnp.array(weights)
+    logger.info(f"Loading {len(snaps_train)} training snapshot(s) from sim={sim_train} …")
+    train_datasets = []
+    for snap_idx in snaps_train:
+        logger.info(f"  snap={snap_idx}")
+        pos, vel, a_snap = load_single_snapshot(
+            data_dir, sim_train, snap_idx, n_part, box_size
+        )
+        pos_lr  = pos * scale_to_lr
+        pos_mod = jnp.mod(pos_lr, mesh_lr)
+        gd      = _gd_jit(pos_mod, mesh_lr, use_pm_potential)
+        _, f_fine, delta_f = _fp_jit(pos_lr)
+        w = compute_sample_weights(
+            pos_lr, np.ones(pos.shape[0], dtype=np.float32),
+            mesh_lr,
+            sc_boost=loss_sc_boost,
+            density_boost=loss_dens_boost,
+            density_gamma=loss_dens_gamma,
+        )
+        df_mag = float(jnp.mean(jnp.sqrt(jnp.sum(delta_f**2, axis=-1))))
+        f_mag  = float(jnp.mean(jnp.sqrt(jnp.sum(f_fine**2,  axis=-1))))
+        logger.info(f"    a={a_snap:.3f}  |ΔF|/|F|={df_mag/f_mag:.3f}"
+                    f"  grid={gd.shape}")
+        train_datasets.append(dict(
+            grid_data=gd, pos_lr=pos_lr, delta_f=delta_f,
+            weights=jnp.array(w), a=a_snap, snap_idx=snap_idx,
+        ))
+        del pos, vel, f_fine
 
-    # ── Init model ────────────────────────────────────────────────────────────
+    rng_np = np.random.default_rng(seed)
+
+    # ── Init model with first dataset ─────────────────────────────────────────
+    d0     = train_datasets[0]
     rng    = jax.random.PRNGKey(seed)
-    params = model.init(rng, grid_data, pos_lr, a_train)
+    params = model.init(rng, d0["grid_data"], d0["pos_lr"], d0["a"])
     n_p    = sum(x.size for x in jax.tree_util.tree_leaves(params))
     logger.info(f"Parameters: {n_p:,}")
 
-    wandb.log({
-        "model/n_params":      n_p,
-        "data/df_mag_target":  df_mag,
-        "data/f_fine_mag":     f_mag,
-        "data/ratio":          df_mag / f_mag,
-    }, step=0)
+    wandb.log({"model/n_params": n_p, "data/n_train_snaps": len(snaps_train)}, step=0)
 
     # ── Optimiser ─────────────────────────────────────────────────────────────
     lr_sched  = optax.warmup_cosine_decay_schedule(
@@ -246,27 +246,35 @@ def train(config_path: str):
     best_prms = None
 
     for step in range(1, n_steps + 1):
+        # Pick random training snapshot each step (or cycle if only one)
+        ds = train_datasets[rng_np.integers(0, len(train_datasets))]
+
         params, opt_state, loss = train_step(
             params, opt_state,
-            grid_data, pos_lr, a_train,
-            delta_f, weights_t,
+            ds["grid_data"], ds["pos_lr"], ds["a"],
+            ds["delta_f"], ds["weights"],
         )
 
         if step % log_every == 0 or step == 1:
-            pred_tr = _pred_jit(params, grid_data, pos_lr, a_train)
-            tr_mse  = force_mse(pred_tr, delta_f)
-            rx = pearson_r(pred_tr[:, 0], delta_f[:, 0])
-            ry = pearson_r(pred_tr[:, 1], delta_f[:, 1])
-            rz = pearson_r(pred_tr[:, 2], delta_f[:, 2])
-            r_mean = (rx + ry + rz) / 3.0
+            # Evaluate on ALL training snapshots, report mean
+            tr_mses, tr_rs = [], []
+            for ds_eval in train_datasets:
+                pred_tr = _pred_jit(params, ds_eval["grid_data"],
+                                    ds_eval["pos_lr"], ds_eval["a"])
+                tr_mses.append(force_mse(pred_tr, ds_eval["delta_f"]))
+                rx = pearson_r(pred_tr[:, 0], ds_eval["delta_f"][:, 0])
+                ry = pearson_r(pred_tr[:, 1], ds_eval["delta_f"][:, 1])
+                rz = pearson_r(pred_tr[:, 2], ds_eval["delta_f"][:, 2])
+                tr_rs.append((rx + ry + rz) / 3.0)
+                del pred_tr
+            r_mean = float(np.mean(tr_rs))
 
             log_dict = {
                 "train/loss":           float(loss),
-                "train/force_mse":      tr_mse,
+                "train/force_mse":      float(np.mean(tr_mses)),
                 "train/pearson_r_mean": r_mean,
                 "train/lr":             float(lr_sched(step)),
             }
-            del pred_tr
 
             vlog, vmse = val_metrics_forceres(
                 _pred_jit, params, data_dir, sim_val, snaps_val,
