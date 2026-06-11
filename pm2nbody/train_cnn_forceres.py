@@ -196,10 +196,22 @@ def train(config_path: str):
         pos, vel, a_snap = load_single_snapshot(
             data_dir, sim_train, snap_idx, n_part, box_size
         )
-        pos_lr  = pos * scale_to_lr
+        pos_lr  = jnp.array(pos * scale_to_lr, dtype=jnp.float32)
+        # ── Sanity checks (remove after NaN is diagnosed) ─────────────────
+        _pos_np = np.asarray(jax.device_get(pos_lr))
+        logger.info(f"    pos dtype={pos_lr.dtype}"
+                    f"  range=[{_pos_np.min():.3f},{_pos_np.max():.3f}]"
+                    f"  nan={bool(np.isnan(_pos_np).any())}"
+                    f"  inf={bool(np.isinf(_pos_np).any())}")
+        del _pos_np
+        # ──────────────────────────────────────────────────────────────────
         pos_mod = jnp.mod(pos_lr, mesh_lr)
         gd      = _gd_jit(pos_mod, mesh_lr, use_pm_potential)
-        _, f_fine, delta_f = _fp_jit(pos_lr)
+        f_pm_dbg, f_fine, delta_f = _fp_jit(pos_lr)
+        logger.info(f"    f_pm nan={bool(jnp.isnan(f_pm_dbg).any())}"
+                    f"  f_fine nan={bool(jnp.isnan(f_fine).any())}"
+                    f"  delta_f dtype={delta_f.dtype}")
+        del f_pm_dbg
         w = compute_sample_weights(
             pos_lr, np.ones(pos.shape[0], dtype=np.float32),
             mesh_lr,
