@@ -158,6 +158,7 @@ def generate(
     sigma8:         float = 0.8,
     smooth_sigma_hr: float = 0.5,
     save_components: bool = True,   # also save f_hr and f_lr_at_hr separately
+    skip_forces:    bool = False,   # only save pos/vel (train_cnn_forceres computes forces on-the-fly)
 ):
     """
     Generate LR/HR simulation pairs and pre-compute force fields.
@@ -192,90 +193,103 @@ def generate(
 
     np.save(out_path / "scale_factors.npy", np.asarray(snapshots))
 
-    # Pre-compile force computation for this mesh pair (done on first call)
-    print("JIT-compiling force computation …")
-    _force_jit = jax.jit(
-        partial(compute_subregion_force_pair,
-                mesh_lr=mesh_lr, mesh_hr=mesh_hr,
-                smooth_sigma_hr=smooth_sigma_hr, smooth_sigma_lr=0.0)
-    )
+    if not skip_forces:
+        # Pre-compile force computation for this mesh pair (done on first call)
+        print("JIT-compiling force computation …")
+        _force_jit = jax.jit(
+            partial(compute_subregion_force_pair,
+                    mesh_lr=mesh_lr, mesh_hr=mesh_hr,
+                    smooth_sigma_hr=smooth_sigma_hr, smooth_sigma_lr=0.0)
+        )
+
+    n_steps = 4 if skip_forces else 5
 
     for n in range(n_sims):
         print(f"\n── Sim {n} / {n_sims - 1} {'─'*40}")
 
         # ── Linear fields ─────────────────────────────────────────────────
-        print("  [1/5] Linear field HR …")
+        print(f"  [1/{n_steps}] Linear field HR …")
         lin_hr = get_linear_field(mesh_shape_hr, box, omega_c, sigma8, seed=n)
         lin_lr = downsample_field(np.asarray(lin_hr), downsampling_factor=stride)
         lin_lr = jnp.array(lin_lr)
 
         # ── ICs ───────────────────────────────────────────────────────────
-        print(f"  [2/5] ICs LR ({n_per_side_lr}³) …")
+        print(f"  [2/{n_steps}] ICs LR ({n_per_side_lr}³) …")
         ics_lr = get_ics(n_per_side_lr, mesh_shape_lr, lin_lr, snapshots[0], omega_c, sigma8)
-        print(f"  [2/5] ICs HR ({n_per_side_hr}³) …")
-        ics_hr = get_ics(n_per_side_hr, mesh_shape_hr, lin_hr, snapshots[0], omega_c, sigma8)
-        del lin_hr, lin_lr
+        if not skip_forces:
+            print(f"  [2/{n_steps}] ICs HR ({n_per_side_hr}³) …")
+            ics_hr = get_ics(n_per_side_hr, mesh_shape_hr, lin_hr, snapshots[0], omega_c, sigma8)
+        del lin_lr
+        if skip_forces:
+            del lin_hr
 
-        # ── Simulations (both on mesh_hr PM mesh) ─────────────────────────
-        print(f"  [3/5] ODE LR ({n_per_side_lr}³ particles, {mesh_hr}³ PM mesh) …")
-        pos_lr_all, vel_lr_all = run_simulation(mesh_hr, omega_c, sigma8, ics_lr, snapshots)
-        print(f"  [3/5] ODE HR ({n_per_side_hr}³ particles, {mesh_hr}³ PM mesh) …")
-        pos_hr_all, vel_hr_all = run_simulation(mesh_hr, omega_c, sigma8, ics_hr, snapshots)
-        del ics_lr, ics_hr
+        # ── Simulations ───────────────────────────────────────────────────
+        print(f"  [3/{n_steps}] ODE LR ({n_per_side_lr}³ particles, {mesh_lr}³ PM mesh) …")
+        pos_lr_all, vel_lr_all = run_simulation(mesh_lr, omega_c, sigma8, ics_lr, snapshots)
+        del ics_lr
+        if not skip_forces:
+            print(f"  [3/{n_steps}] ODE HR ({n_per_side_hr}³ particles, {mesh_hr}³ PM mesh) …")
+            pos_hr_all, vel_hr_all = run_simulation(mesh_hr, omega_c, sigma8, ics_hr, snapshots)
+            del ics_hr, lin_hr
 
-        # ── Save positions / velocities (same format as generate_data_disp) ──
-        print("  [4/5] Saving positions …")
-        pos_lr_np = np.asarray(pos_lr_all)   # [n_snaps, mesh_lr³, 3]  mesh_hr sim units
+        # ── Save positions / velocities ────────────────────────────────────
+        print(f"  [4/{n_steps}] Saving positions …")
+        pos_lr_np = np.asarray(pos_lr_all)
         vel_lr_np = np.asarray(vel_lr_all)
-        pos_hr_np = np.asarray(pos_hr_all)   # [n_snaps, mesh_hr³, 3]
-        vel_hr_np = np.asarray(vel_hr_all)
+        del pos_lr_all, vel_lr_all
 
-        # Divide by mesh_hr to get Mpc/h (same convention as generate_data_disp)
+        # Positions in Mpc/h; LR sim uses mesh_lr units for conversion
         np.save(out_path / f"pos_m{mesh_lr}_s{n}.npy",
-                (pos_lr_np / mesh_hr * box_size).astype(np.float32))
+                (pos_lr_np / mesh_lr * box_size).astype(np.float32))
         np.save(out_path / f"vel_m{mesh_lr}_s{n}.npy",
-                (vel_lr_np / mesh_hr * box_size).astype(np.float32))
-        np.save(out_path / f"pos_m{mesh_hr}_s{n}.npy",
-                (pos_hr_np / mesh_hr * box_size).astype(np.float32))
-        np.save(out_path / f"vel_m{mesh_hr}_s{n}.npy",
-                (vel_hr_np / mesh_hr * box_size).astype(np.float32))
+                (vel_lr_np / mesh_lr * box_size).astype(np.float32))
 
-        # ── Pre-compute force fields per snapshot ──────────────────────────
-        # pos_lr_np is in [0, mesh_hr) mesh_hr units.
-        # compute_subregion_force_pair expects mesh_lr units → divide by r.
-        print(f"  [5/5] Pre-computing force fields ({n_snapshots} snaps) …")
-        r = float(mesh_hr) / float(mesh_lr)
+        if not skip_forces:
+            pos_hr_np = np.asarray(pos_hr_all)
+            vel_hr_np = np.asarray(vel_hr_all)
+            del pos_hr_all, vel_hr_all
+            np.save(out_path / f"pos_m{mesh_hr}_s{n}.npy",
+                    (pos_hr_np / mesh_hr * box_size).astype(np.float32))
+            np.save(out_path / f"vel_m{mesh_hr}_s{n}.npy",
+                    (vel_hr_np / mesh_hr * box_size).astype(np.float32))
 
-        df_arr          = np.zeros((n_snapshots, mesh_hr**3, 3), dtype=np.float32)
-        f_hr_arr        = np.zeros_like(df_arr)
-        f_lr_at_hr_arr  = np.zeros_like(df_arr)
+        # ── Pre-compute force fields (skipped with --skip_forces) ──────────
+        if not skip_forces:
+            print(f"  [5/{n_steps}] Pre-computing force fields ({n_snapshots} snaps) …")
+            r = float(mesh_hr) / float(mesh_lr)
 
-        for s in range(n_snapshots):
-            pos_lr_s = jnp.array(pos_lr_np[s] / r, dtype=jnp.float64)  # mesh_lr units
-            pos_hr_s = jnp.array(pos_hr_np[s] / r, dtype=jnp.float64)  # mesh_lr units
+            df_arr         = np.zeros((n_snapshots, mesh_hr**3, 3), dtype=np.float32)
+            f_hr_arr       = np.zeros_like(df_arr)
+            f_lr_at_hr_arr = np.zeros_like(df_arr)
 
-            f_lr_at_hr_s, f_hr_s, delta_f_s = _force_jit(pos_lr_s, pos_hr_s)
+            for s in range(n_snapshots):
+                pos_lr_s = jnp.array(pos_lr_np[s] / r, dtype=jnp.float64)
+                pos_hr_s = jnp.array(pos_hr_np[s] / r, dtype=jnp.float64)
 
-            f_lr_at_hr_arr[s] = np.asarray(jax.device_get(f_lr_at_hr_s), dtype=np.float32)
-            f_hr_arr[s]       = np.asarray(jax.device_get(f_hr_s),       dtype=np.float32)
-            df_arr[s]         = np.asarray(jax.device_get(delta_f_s),    dtype=np.float32)
+                f_lr_at_hr_s, f_hr_s, delta_f_s = _force_jit(pos_lr_s, pos_hr_s)
 
-            if (s + 1) % 5 == 0 or s == n_snapshots - 1:
-                print(f"       snap {s+1}/{n_snapshots}  "
-                      f"|ΔF| mean = {np.sqrt(np.sum(df_arr[s]**2, axis=-1)).mean():.3e}")
+                f_lr_at_hr_arr[s] = np.asarray(jax.device_get(f_lr_at_hr_s), dtype=np.float32)
+                f_hr_arr[s]       = np.asarray(jax.device_get(f_hr_s),       dtype=np.float32)
+                df_arr[s]         = np.asarray(jax.device_get(delta_f_s),    dtype=np.float32)
 
-        np.save(out_path / f"delta_f_m{mesh_hr}_s{n}.npy",       df_arr)
-        if save_components:
-            np.save(out_path / f"f_hr_m{mesh_hr}_s{n}.npy",      f_hr_arr)
-            np.save(out_path / f"f_lr_at_hr_m{mesh_hr}_s{n}.npy", f_lr_at_hr_arr)
+                if (s + 1) % 5 == 0 or s == n_snapshots - 1:
+                    print(f"       snap {s+1}/{n_snapshots}  "
+                          f"|ΔF| mean = {np.sqrt(np.sum(df_arr[s]**2, axis=-1)).mean():.3e}")
 
-        del pos_lr_all, vel_lr_all, pos_hr_all, vel_hr_all
-        del pos_lr_np, vel_lr_np, pos_hr_np, vel_hr_np
-        del df_arr, f_hr_arr, f_lr_at_hr_arr
+            np.save(out_path / f"delta_f_m{mesh_hr}_s{n}.npy", df_arr)
+            if save_components:
+                np.save(out_path / f"f_hr_m{mesh_hr}_s{n}.npy",      f_hr_arr)
+                np.save(out_path / f"f_lr_at_hr_m{mesh_hr}_s{n}.npy", f_lr_at_hr_arr)
+
+            del pos_hr_np, vel_hr_np, df_arr, f_hr_arr, f_lr_at_hr_arr
+
+        del pos_lr_np, vel_lr_np
 
         # File sizes
-        for fname in [f"pos_m{mesh_lr}_s{n}.npy", f"pos_m{mesh_hr}_s{n}.npy",
-                      f"delta_f_m{mesh_hr}_s{n}.npy"]:
+        fnames = [f"pos_m{mesh_lr}_s{n}.npy"]
+        if not skip_forces:
+            fnames += [f"pos_m{mesh_hr}_s{n}.npy", f"delta_f_m{mesh_hr}_s{n}.npy"]
+        for fname in fnames:
             fpath = out_path / fname
             if fpath.exists():
                 print(f"       {fname}  {fpath.stat().st_size / 1e6:.1f} MB")
@@ -310,6 +324,10 @@ if __name__ == "__main__":
                         help="Gaussian σ_hr for HR force (LR-cell units, default 0.5)")
     parser.add_argument("--no_components", action="store_true",
                         help="Skip saving f_hr and f_lr_at_hr (only save delta_f)")
+    parser.add_argument("--skip_forces", action="store_true",
+                        help="Only save LR pos/vel — skip HR sim and force precomputation. "
+                             "Use when training with train_cnn_forceres.py (computes forces on-the-fly). "
+                             f"Disk: ~{128**3*3*10*2*4//1e6:.0f} MB/sim instead of ~16 GB/sim for mesh_hr=512.")
     args = parser.parse_args()
 
     params = dict(PRESETS[args.mode])
@@ -321,5 +339,6 @@ if __name__ == "__main__":
     if args.n_sims  is not None: params["n_sims"]      = args.n_sims
     params["smooth_sigma_hr"] = args.sigma_hr
     params["save_components"] = not args.no_components
+    params["skip_forces"]     = args.skip_forces
 
     generate(**params)
