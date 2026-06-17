@@ -1,0 +1,78 @@
+# ==============================================================================
+# multisim_cnn_512.yaml
+# CNN-WST stage-1 force-resolution correction — mesh_lr=128 → mesh_hr=512.
+#
+# Cosmology: omega_c=0.25, sigma8=0.8 (Planck15 default)
+# Data:      generate_data_subregion.py --skip_forces
+#            n_part=128, mesh_lr=128, mesh_hr=512, L=256 Mpc/h, 6 sims, 10 snaps
+#            stored at: /cosmos_storage/home/diegovillalba/JaxPM/data/subregion_128_512
+#
+# Key differences vs multisim_cnn.yaml (mesh_hr=256):
+#   - mesh_hr: 256 → 512  (stride 2 → 4, 71× speedup vs 8×)
+#   - channels_hidden_dim: 32 → 64  (harder correction task)
+#   - n_convolutions:       4 →  6  (more receptive field)
+#   - n_steps: 5000 → 10000
+#   - sim_id_train: 0 → trains on sims 0-4 (all training sims, like MLP)
+#
+# Pipeline:
+#   Step 1: python generate_data_subregion.py \
+#             --mode full --mesh_lr 128 --mesh_hr 512 --L 256 --snaps 10 --n_sims 6 \
+#             --out /cosmos_storage/home/diegovillalba/JaxPM/data/subregion_128_512 \
+#             --skip_forces
+#   Step 2: python train_cnn_forceres.py --config configs/multisim_cnn_512.yaml
+#   Step 3: python train_pretrain_forceres.py --config configs/multisim_mlp_512.yaml
+# ==============================================================================
+
+experiment:
+  name: multisim_cnn_512
+  output_dir: runs/multisim_cnn_512
+
+data:
+  data_dir: /cosmos_storage/home/diegovillalba/JaxPM/data/subregion_128_512
+  n_part:   128
+  mesh_lr:  128     # cheap simulation mesh (production scenario)
+  mesh_hr:  512     # 4× oversampling — captures halos and filaments
+  box_size: 256.0
+
+  sim_id_train: 0         # CNN trains on one sim; MLP generalises across sims
+  sim_id_val:   5
+  snaps_train: [1, 3, 5, 7, 9]    # a ≈ 0.20, 0.40, 0.60, 0.80, 1.00
+  snaps_val:   [0, 2, 4, 6, 8]    # a ≈ 0.10, 0.30, 0.50, 0.70, 0.90
+
+model:
+  type: cnn_wst
+
+  channels_hidden_dim:   64    # 32 → 64: harder correction (4× stride vs 2×)
+  n_convolutions:         6    # 4  → 6: larger receptive field
+  n_fully_connected:      2
+  kernel_size:            3
+  pad_periodic:        true
+  embed_globals:       true
+  n_globals_embedding:    2
+  globals_embedding_dim:  8
+  global_conditioning:  null
+  use_attention_interpolation: false
+  add_particle_velocities:     false
+
+  wst_J: 2
+  wst_L: 4
+
+  input_dim: 2
+  use_pm_potential: true
+
+training:
+  seed: 0
+  n_steps:      10000    # 5000 → 10000: harder task
+  lr:          1.0e-4
+  weight_decay: 1.0e-4
+  warmup_steps:   500
+  log_every:      100
+  save_every:     500
+
+  loss_sc_boost:      3.0
+  loss_density_boost: 1.0
+  loss_density_gamma: 0.5
+
+wandb:
+  project: pm2nbody_multisim
+  tags: [cnn_wst, forceres, multisim, mesh512, stride4]
